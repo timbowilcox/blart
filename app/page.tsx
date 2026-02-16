@@ -2,170 +2,132 @@
 
 import { useEffect, useState } from 'react'
 
-interface Artwork {
-  id: string
-  title: string
-  style: string
-  slug: string
-  image_thumbnail_url: string | null
-  download_count_free: number
-}
-
 export default function Home() {
-  const [artworks, setArtworks] = useState<Artwork[]>([])
+  const [artworks, setArtworks] = useState([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
-  const [sort, setSort] = useState('newest')
-
-  const styles = ['abstract', 'landscape', 'portrait', 'surrealism', 'minimalist']
 
   useEffect(() => {
-    fetchArtworks()
-  }, [page, selectedStyle, sort])
+    fetch(`/api/artworks?page=${page}&limit=20`)
+      .then(r => r.json())
+      .then(d => setArtworks(d.data || []))
+      .catch(() => setArtworks([]))
+      .finally(() => setLoading(false))
+  }, [page])
 
-  async function fetchArtworks() {
-    setLoading(true)
-    try {
-      const query = new URLSearchParams({
-        page: page.toString(),
-        limit: '20',
-        sort,
-        ...(selectedStyle && { style: selectedStyle }),
-      })
-
-      const response = await fetch(`/api/artworks?${query}`)
-      if (!response.ok) throw new Error('Failed to fetch')
-
-      const { data } = await response.json()
-      setArtworks(data || [])
-    } catch (err) {
-      console.error('Error:', err)
-      setArtworks([])
-    } finally {
-      setLoading(false)
-    }
+  const styles = {
+    container: {
+      minHeight: '100vh',
+      backgroundColor: '#0A0A0A',
+      color: '#F5F5F5',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+    },
+    header: {
+      position: 'sticky' as const,
+      top: 0,
+      zIndex: 40,
+      borderBottom: '1px solid #2A2A2A',
+      backgroundColor: 'rgba(10, 10, 10, 0.8)',
+      padding: '24px',
+    },
+    headerContent: {
+      maxWidth: '1280px',
+      margin: '0 auto',
+      display: 'flex' as const,
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    title: {
+      fontSize: '32px',
+      fontWeight: 'bold',
+      margin: 0,
+    },
+    main: {
+      maxWidth: '1280px',
+      margin: '0 auto',
+      padding: '48px 16px',
+    },
+    grid: {
+      display: 'grid' as const,
+      gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+      gap: '16px',
+    },
+    card: {
+      position: 'relative' as const,
+      overflow: 'hidden',
+      borderRadius: '8px',
+      backgroundColor: '#141414',
+      cursor: 'pointer',
+      aspectRatio: '1',
+    },
+    image: {
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover' as const,
+    },
+    empty: {
+      textAlign: 'center' as const,
+      color: '#A0A0A0',
+      padding: '48px 0',
+    },
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-4 py-6">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-bold">blart.ai</h1>
-            <div className="flex gap-4">
-              <button className="text-sm hover:text-zinc-300">Login</button>
-              <button className="rounded-md bg-white px-4 py-2 text-black hover:bg-zinc-100">
-                Sign Up
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => {
-                  setSelectedStyle(null)
-                  setPage(0)
-                }}
-                className={`rounded-full px-4 py-2 text-sm transition ${
-                  selectedStyle === null
-                    ? 'bg-white text-black'
-                    : 'border border-zinc-600 hover:border-zinc-400'
-                }`}
-              >
-                All
-              </button>
-              {styles.map((style) => (
-                <button
-                  key={style}
-                  onClick={() => {
-                    setSelectedStyle(style)
-                    setPage(0)
-                  }}
-                  className={`rounded-full px-4 py-2 text-sm transition capitalize ${
-                    selectedStyle === style
-                      ? 'bg-white text-black'
-                      : 'border border-zinc-600 hover:border-zinc-400'
-                  }`}
-                >
-                  {style}
-                </button>
-              ))}
-            </div>
-
-            <select
-              value={sort}
-              onChange={(e) => {
-                setSort(e.target.value)
-                setPage(0)
-              }}
-              className="rounded-md border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm"
-            >
-              <option value="newest">Newest</option>
-              <option value="trending">Most Downloaded</option>
-              <option value="revenue">Top Revenue</option>
-            </select>
-          </div>
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <div style={styles.headerContent}>
+          <h1 style={styles.title}>blart.ai</h1>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-12">
+      <main style={styles.main}>
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full border-4 border-zinc-800 border-t-white h-8 w-8"></div>
-          </div>
+          <div style={styles.empty}>Loading...</div>
         ) : artworks.length === 0 ? (
-          <div className="py-12 text-center text-zinc-400">
-            No artworks found. Check back soon!
-          </div>
+          <div style={styles.empty}>No artworks found yet. Check back soon!</div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {artworks.map((artwork) => (
-                <div
-                  key={artwork.id}
-                  className="group relative overflow-hidden rounded-lg bg-zinc-900 cursor-pointer transition hover:scale-105"
-                >
-                  <div className="aspect-square bg-zinc-800 flex items-center justify-center">
-                    {artwork.image_thumbnail_url ? (
-                      <img
-                        src={artwork.image_thumbnail_url}
-                        alt={artwork.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="text-zinc-500">No image</div>
-                    )}
-                  </div>
-
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-end p-3">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-sm line-clamp-2">
-                        {artwork.title}
-                      </h3>
-                      <p className="text-xs text-zinc-300 capitalize">
-                        {artwork.style}
-                      </p>
-                    </div>
-                  </div>
+            <div style={styles.grid}>
+              {artworks.map((art: any) => (
+                <div key={art.id} style={styles.card}>
+                  {art.image_thumbnail_url ? (
+                    <img src={art.image_thumbnail_url} alt={art.title} style={styles.image} />
+                  ) : (
+                    <div style={{ ...styles.image, backgroundColor: '#1E1E1E' }} />
+                  )}
                 </div>
               ))}
             </div>
-
-            <div className="mt-12 flex items-center justify-center gap-4">
+            <div style={{ textAlign: 'center', marginTop: '48px' }}>
               <button
                 onClick={() => setPage(Math.max(0, page - 1))}
                 disabled={page === 0}
-                className="rounded-md border border-zinc-600 px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:border-zinc-400"
+                style={{
+                  padding: '8px 16px',
+                  marginRight: '16px',
+                  backgroundColor: '#2A2A2A',
+                  color: '#F5F5F5',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: page === 0 ? 'not-allowed' : 'pointer',
+                  opacity: page === 0 ? 0.5 : 1,
+                }}
               >
                 Previous
               </button>
-              <span className="text-sm text-zinc-400">Page {page + 1}</span>
+              <span style={{ marginRight: '16px' }}>Page {page + 1}</span>
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={artworks.length < 20}
-                className="rounded-md border border-zinc-600 px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:border-zinc-400"
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#2A2A2A',
+                  color: '#F5F5F5',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: artworks.length < 20 ? 'not-allowed' : 'pointer',
+                  opacity: artworks.length < 20 ? 0.5 : 1,
+                }}
               >
                 Next
               </button>
