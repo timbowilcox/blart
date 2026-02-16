@@ -69,7 +69,7 @@ export default function Home() {
     <div className="gallery-container">
       <header className="gallery-header">
         <div className="header-content">
-          <img src="https://i.postimg.cc/fyBtmHy0/logo.png" alt="blart.ai" className="header-logo" />
+          <img src="https://i.postimg.cc/QtBh00fC/logo.png" alt="blart.ai" className="header-logo" />
           <div className="header-buttons">
             {user ? (
               <>
