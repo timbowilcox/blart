@@ -1,13 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
-import { Artwork } from '@/lib/types'
+
+interface Artwork {
+  id: string
+  title: string
+  style: string
+  slug: string
+  image_thumbnail_url: string | null
+  download_count_free: number
+}
 
 export default function Home() {
   const [artworks, setArtworks] = useState<Artwork[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
   const [sort, setSort] = useState('newest')
@@ -20,7 +26,6 @@ export default function Home() {
 
   async function fetchArtworks() {
     setLoading(true)
-    setError(null)
     try {
       const query = new URLSearchParams({
         page: page.toString(),
@@ -30,12 +35,12 @@ export default function Home() {
       })
 
       const response = await fetch(`/api/artworks?${query}`)
-      if (!response.ok) throw new Error('Failed to fetch artworks')
+      if (!response.ok) throw new Error('Failed to fetch')
 
       const { data } = await response.json()
       setArtworks(data || [])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      console.error('Error:', err)
       setArtworks([])
     } finally {
       setLoading(false)
@@ -44,10 +49,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
+        <div className="mx-auto max-w-7xl px-4 py-6">
+          <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold">blart.ai</h1>
             <div className="flex gap-4">
               <button className="text-sm hover:text-zinc-300">Login</button>
@@ -57,8 +61,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => {
@@ -107,14 +110,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Gallery */}
-      <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        {error && (
-          <div className="mb-8 rounded-lg bg-red-500/10 p-4 text-red-400">
-            {error}
-          </div>
-        )}
-
+      <main className="mx-auto max-w-7xl px-4 py-12">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full border-4 border-zinc-800 border-t-white h-8 w-8"></div>
@@ -131,22 +127,18 @@ export default function Home() {
                   key={artwork.id}
                   className="group relative overflow-hidden rounded-lg bg-zinc-900 cursor-pointer transition hover:scale-105"
                 >
-                  {/* Placeholder with blur hash would go here */}
                   <div className="aspect-square bg-zinc-800 flex items-center justify-center">
                     {artwork.image_thumbnail_url ? (
-                      <Image
+                      <img
                         src={artwork.image_thumbnail_url}
                         alt={artwork.title}
-                        fill
-                        className="object-cover"
-                        unoptimized
+                        className="w-full h-full object-cover"
                       />
                     ) : (
                       <div className="text-zinc-500">No image</div>
                     )}
                   </div>
 
-                  {/* Hover overlay */}
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-end p-3">
                     <div className="flex-1">
                       <h3 className="font-semibold text-sm line-clamp-2">
@@ -161,7 +153,6 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Pagination */}
             <div className="mt-12 flex items-center justify-center gap-4">
               <button
                 onClick={() => setPage(Math.max(0, page - 1))}
