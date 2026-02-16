@@ -1,133 +1,116 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import './gallery.css'
+
+interface Artwork {
+  id: string
+  title: string
+  style: string
+  slug: string
+  image_thumbnail_url: string | null
+  download_count_free: number
+  download_count_paid: number
+}
 
 export default function Home() {
-  const [artworks, setArtworks] = useState([])
+  const [artworks, setArtworks] = useState<Artwork[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
+  const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null)
+  const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/artworks?page=${page}&limit=20`)
-      .then(r => r.json())
-      .then(d => setArtworks(d.data || []))
-      .catch(() => setArtworks([]))
-      .finally(() => setLoading(false))
+    fetchArtworks()
   }, [page])
 
-  const styles = {
-    container: {
-      minHeight: '100vh',
-      backgroundColor: '#0A0A0A',
-      color: '#F5F5F5',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-    },
-    header: {
-      position: 'sticky' as const,
-      top: 0,
-      zIndex: 40,
-      borderBottom: '1px solid #2A2A2A',
-      backgroundColor: 'rgba(10, 10, 10, 0.8)',
-      padding: '24px',
-    },
-    headerContent: {
-      maxWidth: '1280px',
-      margin: '0 auto',
-      display: 'flex' as const,
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    title: {
-      fontSize: '32px',
-      fontWeight: 'bold',
-      margin: 0,
-    },
-    main: {
-      maxWidth: '1280px',
-      margin: '0 auto',
-      padding: '48px 16px',
-    },
-    grid: {
-      display: 'grid' as const,
-      gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-      gap: '16px',
-    },
-    card: {
-      position: 'relative' as const,
-      overflow: 'hidden',
-      borderRadius: '8px',
-      backgroundColor: '#141414',
-      cursor: 'pointer',
-      aspectRatio: '1',
-    },
-    image: {
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover' as const,
-    },
-    empty: {
-      textAlign: 'center' as const,
-      color: '#A0A0A0',
-      padding: '48px 0',
-    },
+  async function fetchArtworks() {
+    setLoading(true)
+    try {
+      const response = await fetch(`/api/artworks?page=${page}&limit=20`)
+      const { data } = await response.json()
+      setArtworks(data || [])
+    } catch (err) {
+      console.error('Error:', err)
+      setArtworks([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDownload(artwork: Artwork) {
+    if (!artwork.slug) return
+    setDownloading(true)
+    try {
+      const response = await fetch(`/api/artworks/${artwork.slug}/download`)
+      if (!response.ok) throw new Error('Download failed')
+      
+      const { downloadUrl, filename } = await response.json()
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = filename || 'artwork.jpg'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      setSelectedArtwork(null)
+    } catch (err) {
+      alert('Download failed. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <div style={styles.headerContent}>
-          <h1 style={styles.title}>blart.ai</h1>
+    <div className="gallery-container">
+      <header className="gallery-header">
+        <div className="header-content">
+          <h1 className="header-title">blart.ai</h1>
+          <div className="header-buttons">
+            <button className="btn-text">Login</button>
+            <button className="btn-primary">Sign Up</button>
+          </div>
         </div>
       </header>
 
-      <main style={styles.main}>
+      <main className="gallery-main">
         {loading ? (
-          <div style={styles.empty}>Loading...</div>
+          <div className="loading">Loading...</div>
         ) : artworks.length === 0 ? (
-          <div style={styles.empty}>No artworks found yet. Check back soon!</div>
+          <div className="empty">No artworks found. Check back soon!</div>
         ) : (
           <>
-            <div style={styles.grid}>
-              {artworks.map((art: any) => (
-                <div key={art.id} style={styles.card}>
-                  {art.image_thumbnail_url ? (
-                    <img src={art.image_thumbnail_url} alt={art.title} style={styles.image} />
-                  ) : (
-                    <div style={{ ...styles.image, backgroundColor: '#1E1E1E' }} />
+            <div className="gallery-grid">
+              {artworks.map((art) => (
+                <div
+                  key={art.id}
+                  className="gallery-card"
+                  onClick={() => setSelectedArtwork(art)}
+                >
+                  {art.image_thumbnail_url && (
+                    <img
+                      src={art.image_thumbnail_url}
+                      alt={art.title}
+                      className="card-image"
+                    />
                   )}
                 </div>
               ))}
             </div>
-            <div style={{ textAlign: 'center', marginTop: '48px' }}>
+
+            <div className="pagination">
               <button
                 onClick={() => setPage(Math.max(0, page - 1))}
                 disabled={page === 0}
-                style={{
-                  padding: '8px 16px',
-                  marginRight: '16px',
-                  backgroundColor: '#2A2A2A',
-                  color: '#F5F5F5',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: page === 0 ? 'not-allowed' : 'pointer',
-                  opacity: page === 0 ? 0.5 : 1,
-                }}
+                className="btn-secondary"
               >
                 Previous
               </button>
-              <span style={{ marginRight: '16px' }}>Page {page + 1}</span>
+              <span className="page-info">Page {page + 1}</span>
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={artworks.length < 20}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#2A2A2A',
-                  color: '#F5F5F5',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: artworks.length < 20 ? 'not-allowed' : 'pointer',
-                  opacity: artworks.length < 20 ? 0.5 : 1,
-                }}
+                className="btn-secondary"
               >
                 Next
               </button>
@@ -135,6 +118,48 @@ export default function Home() {
           </>
         )}
       </main>
+
+      {/* Lightbox Modal */}
+      {selectedArtwork && (
+        <div className="modal-overlay" onClick={() => setSelectedArtwork(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="modal-close"
+              onClick={() => setSelectedArtwork(null)}
+            >
+              ✕
+            </button>
+
+            <img
+              src={selectedArtwork.image_thumbnail_url || ''}
+              alt={selectedArtwork.title}
+              className="modal-image"
+            />
+
+            <div className="modal-info">
+              <h2 className="modal-title">{selectedArtwork.title}</h2>
+              <p className="modal-style">{selectedArtwork.style}</p>
+
+              <div className="modal-buttons">
+                <button
+                  className="btn-primary"
+                  onClick={() => handleDownload(selectedArtwork)}
+                  disabled={downloading}
+                >
+                  {downloading ? 'Downloading...' : '↓ Download Free (1080p)'}
+                </button>
+                <button className="btn-secondary" disabled>
+                  💳 4K Download — $5 (coming soon)
+                </button>
+              </div>
+
+              <div className="modal-stats">
+                ❤️ Downloaded {selectedArtwork.download_count_free + selectedArtwork.download_count_paid} times
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
