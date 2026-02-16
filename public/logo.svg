@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 768" width="200" height="150">
+  <text x="512" y="450" font-size="180" font-weight="bold" font-family="Arial, sans-serif" text-anchor="middle" fill="#000000">blart</text>
+  <circle cx="455" cy="380" r="25" fill="#000000"/>
+  <rect x="875" y="320" width="40" height="120" fill="#000000"/>
+  <rect x="840" y="355" width="110" height="40" fill="#000000"/>
+</svg>
