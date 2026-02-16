@@ -1,6 +1,5 @@
-@import "tailwindcss";
-
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+@import "tailwindcss";
 
 :root {
   --bg-primary: #0A0A0A;
@@ -32,7 +31,3 @@ body {
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Instrument Serif', serif;
 }
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;

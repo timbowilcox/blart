@@ -4,9 +4,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing STRIPE_SECRET_KEY')
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-12-15.acacia',
-})
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 export async function createCheckoutSession(
   customerId: string | undefined,
