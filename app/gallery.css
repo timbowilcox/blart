@@ -26,13 +26,8 @@
 
 .header-logo {
   height: 50px;
-  display: flex;
-  align-items: center;
-  font-size: 32px;
-  font-weight: 900;
-  letter-spacing: -1px;
-  color: #1A1A1A;
-  font-family: 'Arial', 'Helvetica', sans-serif;
+  width: auto;
+  max-width: 150px;
 }
 
 .header-buttons {
