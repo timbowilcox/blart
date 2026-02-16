@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { AuthModal } from '@/components/auth-modal'
+import { useAuth } from '@/lib/auth-context'
 import './gallery.css'
 
 interface Artwork {
@@ -19,6 +21,8 @@ export default function Home() {
   const [page, setPage] = useState(0)
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null)
   const [downloading, setDownloading] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
+  const { user } = useAuth()
 
   useEffect(() => {
     fetchArtworks()
@@ -67,8 +71,16 @@ export default function Home() {
         <div className="header-content">
           <h1 className="header-title">blart.ai</h1>
           <div className="header-buttons">
-            <button className="btn-text">Login</button>
-            <button className="btn-primary">Sign Up</button>
+            {user ? (
+              <>
+                <span className="user-email">{user.email}</span>
+              </>
+            ) : (
+              <>
+                <button className="btn-text" onClick={() => setAuthOpen(true)}>Login</button>
+                <button className="btn-primary" onClick={() => setAuthOpen(true)}>Sign Up</button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -160,6 +172,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Auth Modal */}
+      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   )
 }
