@@ -88,7 +88,6 @@ export function ArtworkProduct({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-16">
-      {/* Left: Framed Preview */}
       <div className="lg:col-span-3">
         <div className="sticky top-24">
           <FramedPreview
@@ -97,12 +96,9 @@ export function ArtworkProduct({
             frameColor={selectedFrame}
             showMount={showMount}
             sizeLabel={selectedProduct?.size_label}
-            orientation={artwork.orientation}
           />
         </div>
       </div>
-
-      {/* Right: Details & Actions */}
       <div className="lg:col-span-2">
         <div className="sticky top-24">
           {artwork.art_styles && (
@@ -110,18 +106,10 @@ export function ArtworkProduct({
               {(artwork.art_styles as any).name}
             </p>
           )}
-
-          <h1 className="font-display text-heading font-light mb-4">
-            {artwork.title}
-          </h1>
-
+          <h1 className="font-display text-heading font-light mb-4">{artwork.title}</h1>
           {artwork.description && (
-            <p className="text-blart-dim text-sm leading-relaxed mb-8">
-              {artwork.description}
-            </p>
+            <p className="text-blart-dim text-sm leading-relaxed mb-8">{artwork.description}</p>
           )}
-
-          {/* Tags */}
           {artwork.tags && artwork.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-8">
               {artwork.tags.map(tag => (
@@ -129,33 +117,18 @@ export function ArtworkProduct({
               ))}
             </div>
           )}
-
-          {/* Actions */}
           <div className="space-y-8">
-            {/* Free Download */}
             <div>
-              <button
-                onClick={handleDownload}
-                disabled={isDownloading}
-                className="btn-outline w-full"
-              >
+              <button onClick={handleDownload} disabled={isDownloading} className="btn-outline w-full">
                 {isDownloading ? 'Preparing...' : 'Download 4K — Free'}
               </button>
             </div>
-
-            {/* Divider */}
             <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-blart-stone/50" />
-              </div>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-blart-stone/50" /></div>
               <div className="relative flex justify-center">
-                <span className="bg-blart-white px-4 text-xs tracking-widest uppercase text-blart-ash">
-                  or order a print
-                </span>
+                <span className="bg-blart-white px-4 text-xs tracking-widest uppercase text-blart-ash">or order a print</span>
               </div>
             </div>
-
-            {/* Size Selection */}
             <div>
               <p className="text-xs tracking-widest uppercase text-blart-ash mb-3">Size</p>
               <div className="grid grid-cols-1 gap-2">
@@ -177,8 +150,6 @@ export function ArtworkProduct({
                 ))}
               </div>
             </div>
-
-            {/* Frame Color */}
             {selectedProduct && (
               <div>
                 <p className="text-xs tracking-widest uppercase text-blart-ash mb-3">
@@ -197,8 +168,6 @@ export function ArtworkProduct({
                     />
                   ))}
                 </div>
-
-                {/* Mount toggle */}
                 <div className="flex items-center gap-3 mt-4">
                   <button
                     onClick={() => setShowMount(!showMount)}
@@ -206,24 +175,14 @@ export function ArtworkProduct({
                   >
                     <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${showMount ? 'left-5' : 'left-0.5'}`} />
                   </button>
-                  <span className="text-xs tracking-wider uppercase text-blart-ash">
-                    Mount (mat border)
-                  </span>
+                  <span className="text-xs tracking-wider uppercase text-blart-ash">Mount (mat border)</span>
                 </div>
               </div>
             )}
-
-            {/* Order Button */}
             {selectedProduct && (
               <div>
-                <button
-                  onClick={handleOrder}
-                  disabled={isOrdering}
-                  className="btn-primary w-full text-base py-4"
-                >
-                  {isOrdering
-                    ? 'Preparing checkout...'
-                    : `Order Print — ${formatPrice(selectedProduct.retail_price_aud)}`}
+                <button onClick={handleOrder} disabled={isOrdering} className="btn-primary w-full text-base py-4">
+                  {isOrdering ? 'Preparing checkout...' : `Order Print — ${formatPrice(selectedProduct.retail_price_aud)}`}
                 </button>
                 <p className="text-xs text-blart-ash text-center mt-3">
                   Museum-grade Giclée print · Worldwide shipping · Ready to hang
@@ -231,8 +190,6 @@ export function ArtworkProduct({
               </div>
             )}
           </div>
-
-          {/* Stats */}
           <div className="mt-10 pt-6 border-t border-blart-stone/50 flex gap-8">
             <div>
               <p className="text-xs tracking-wider uppercase text-blart-ash">Downloads</p>
