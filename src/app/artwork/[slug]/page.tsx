@@ -1,7 +1,7 @@
 import { supabase, type Artwork, type PrintProduct } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { ArtworkActions } from '@/components/ArtworkActions';
+import { ArtworkProduct } from '@/components/ArtworkProduct';
 import Link from 'next/link';
 
 export const revalidate = 60;
@@ -114,64 +114,8 @@ export default async function ArtworkPage({ params }: { params: { slug: string }
           <span className="text-blart-dim">{artwork.title}</span>
         </nav>
 
-        {/* Main content */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-16">
-          {/* Image */}
-          <div className="lg:col-span-3">
-            <div className="sticky top-24">
-              <img
-                src={artwork.image_url}
-                alt={artwork.title}
-                className="w-full h-auto rounded-sm"
-              />
-            </div>
-          </div>
-
-          {/* Details & Actions */}
-          <div className="lg:col-span-2">
-            <div className="sticky top-24">
-              {artwork.art_styles && (
-                <p className="text-xs tracking-widest uppercase text-blart-ash mb-3">
-                  {(artwork.art_styles as any).name}
-                </p>
-              )}
-
-              <h1 className="font-display text-heading font-light mb-4">
-                {artwork.title}
-              </h1>
-
-              {artwork.description && (
-                <p className="text-blart-dim text-sm leading-relaxed mb-8">
-                  {artwork.description}
-                </p>
-              )}
-
-              {/* Tags */}
-              {artwork.tags && artwork.tags.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {artwork.tags.map(tag => (
-                    <span key={tag} className="tag-pill">{tag}</span>
-                  ))}
-                </div>
-              )}
-
-              {/* Actions: Download & Order */}
-              <ArtworkActions artwork={artwork} products={products} />
-
-              {/* Stats */}
-              <div className="mt-10 pt-6 border-t border-blart-stone/50 flex gap-8">
-                <div>
-                  <p className="text-xs tracking-wider uppercase text-blart-ash">Downloads</p>
-                  <p className="font-mono text-sm mt-1">{artwork.download_count.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-xs tracking-wider uppercase text-blart-ash">Orders</p>
-                  <p className="font-mono text-sm mt-1">{artwork.order_count.toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Main content — framed preview + product actions */}
+        <ArtworkProduct artwork={artwork} products={products} />
 
         {/* Related */}
         {related.length > 0 && (
