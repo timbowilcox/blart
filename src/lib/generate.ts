@@ -1,9 +1,9 @@
 import { supabaseAdmin } from './supabase';
 import type { ArtStyle } from './supabase';
 
-// --- Anthropic Image Generation ---
+// --- Google Gemini (Nano Banana) Image Generation ---
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent';
 
 interface GenerationRequest {
   style_id: string;
@@ -12,6 +12,7 @@ interface GenerationRequest {
   custom_prompt?: string;
   orientation?: 'portrait' | 'landscape' | 'square';
   reference_notes?: string;
+  reference_images?: string[];
 }
 
 interface GenerationResult {
@@ -22,7 +23,6 @@ interface GenerationResult {
   error?: string;
 }
 
-// Style-specific prompt enhancers for richer, more varied results
 const STYLE_ENHANCERS: Record<string, string[]> = {
   abstract: [
     'bold color fields and organic shapes',
@@ -96,7 +96,6 @@ const STYLE_ENHANCERS: Record<string, string[]> = {
   ],
 };
 
-// Title generation themes per style
 const TITLE_THEMES: Record<string, string[]> = {
   abstract: ['Resonance', 'Convergence', 'Pulse', 'Drift', 'Fracture', 'Bloom', 'Threshold', 'Echo', 'Flux', 'Veil'],
   geometric: ['Lattice', 'Vertex', 'Prism', 'Tessellation', 'Axis', 'Meridian', 'Grid', 'Facet', 'Vector', 'Form'],
@@ -118,7 +117,6 @@ function generateTitle(styleSlug: string): string {
   const themes = TITLE_THEMES[styleSlug] || TITLE_THEMES.abstract;
   const base = pickRandom(themes);
   const suffixes = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'No. 1', 'No. 2', 'No. 3', 'No. 4', 'No. 5', 'in Blue', 'in Gold', 'in Shadow', 'at Dawn', 'at Dusk', 'Ascending', 'Descending', 'Unfurling', 'Dissolving', 'Emerging'];
-  // 60% chance of adding a suffix for variety
   if (Math.random() > 0.4) {
     return `${base} ${pickRandom(suffixes)}`;
   }
@@ -128,57 +126,56 @@ function generateTitle(styleSlug: string): string {
 function generateDescription(styleSlug: string, title: string): string {
   const descriptions: Record<string, string[]> = {
     abstract: [
-      `A study in form and colour that invites contemplation.`,
-      `Bold gestural marks create a dialogue between chaos and order.`,
-      `Layers of pigment build a rich, textural surface that rewards close viewing.`,
+      'A study in form and colour that invites contemplation.',
+      'Bold gestural marks create a dialogue between chaos and order.',
+      'Layers of pigment build a rich, textural surface that rewards close viewing.',
     ],
     geometric: [
-      `Precise mathematical forms create a harmonious visual rhythm.`,
-      `Clean lines and careful proportions produce a meditative composition.`,
-      `An exploration of symmetry and balance through geometric abstraction.`,
+      'Precise mathematical forms create a harmonious visual rhythm.',
+      'Clean lines and careful proportions produce a meditative composition.',
+      'An exploration of symmetry and balance through geometric abstraction.',
     ],
     landscapes: [
-      `A dreamlike vista that captures the essence of untouched wilderness.`,
-      `Light and atmosphere converge in this sweeping natural panorama.`,
-      `An AI interpretation of nature's grandeur, both familiar and otherworldly.`,
+      'A dreamlike vista that captures the essence of untouched wilderness.',
+      'Light and atmosphere converge in this sweeping natural panorama.',
+      "An AI interpretation of nature's grandeur, both familiar and otherworldly.",
     ],
     botanical: [
-      `Intricate organic forms reveal the hidden beauty of the natural world.`,
-      `A celebration of botanical elegance rendered in vivid detail.`,
-      `Nature's patterns and textures take centre stage in this intimate study.`,
+      'Intricate organic forms reveal the hidden beauty of the natural world.',
+      'A celebration of botanical elegance rendered in vivid detail.',
+      "Nature's patterns and textures take centre stage in this intimate study.",
     ],
     portraits: [
-      `A contemporary figure study that blurs the line between identity and abstraction.`,
-      `Human presence emerges from and dissolves into the surrounding composition.`,
-      `An exploration of the self through the lens of algorithmic creativity.`,
+      'A contemporary figure study that blurs the line between identity and abstraction.',
+      'Human presence emerges from and dissolves into the surrounding composition.',
+      'An exploration of the self through the lens of algorithmic creativity.',
     ],
     celestial: [
-      `Cosmic phenomena rendered with otherworldly beauty and scale.`,
-      `The vastness of space distilled into a mesmerising visual experience.`,
-      `Stellar formations and celestial light create an immersive cosmic portrait.`,
+      'Cosmic phenomena rendered with otherworldly beauty and scale.',
+      'The vastness of space distilled into a mesmerising visual experience.',
+      'Stellar formations and celestial light create an immersive cosmic portrait.',
     ],
     'ocean-water': [
-      `The fluid dynamics of water captured in a single transcendent moment.`,
-      `Deep marine blues and aquatic light create an immersive underwater world.`,
-      `Ocean energy and tranquility coexist in this aquatic composition.`,
+      'The fluid dynamics of water captured in a single transcendent moment.',
+      'Deep marine blues and aquatic light create an immersive underwater world.',
+      'Ocean energy and tranquility coexist in this aquatic composition.',
     ],
     minimalist: [
-      `Restrained elegance — every element exists with deliberate purpose.`,
-      `A meditation on negative space and the beauty of simplicity.`,
-      `Stripped to its essence, the composition speaks through what it leaves out.`,
+      'Restrained elegance — every element exists with deliberate purpose.',
+      'A meditation on negative space and the beauty of simplicity.',
+      'Stripped to its essence, the composition speaks through what it leaves out.',
     ],
     texture: [
-      `Surface, material, and light interact to create a tactile visual experience.`,
-      `Macro-scale textures reveal hidden landscapes within everyday materials.`,
-      `An intimate exploration of surface and substance.`,
+      'Surface, material, and light interact to create a tactile visual experience.',
+      'Macro-scale textures reveal hidden landscapes within everyday materials.',
+      'An intimate exploration of surface and substance.',
     ],
     surreal: [
-      `Reality bends and transforms in this dreamlike visual narrative.`,
-      `Familiar elements are reimagined in impossible, captivating arrangements.`,
-      `A window into a world where the laws of physics are merely suggestions.`,
+      'Reality bends and transforms in this dreamlike visual narrative.',
+      'Familiar elements are reimagined in impossible, captivating arrangements.',
+      'A window into a world where the laws of physics are merely suggestions.',
     ],
   };
-
   const pool = descriptions[styleSlug] || descriptions.abstract;
   return pickRandom(pool);
 }
@@ -197,9 +194,7 @@ function generateTags(styleSlug: string): string[] {
     texture: ['texture', 'material', 'surface', 'macro', 'detail'],
     surreal: ['surreal', 'dreamlike', 'fantasy', 'imagination', 'otherworldly'],
   };
-
   const extras = styleTags[styleSlug] || styleTags.abstract;
-  // Pick 2-3 random style tags + base tags
   const picked = extras.sort(() => Math.random() - 0.5).slice(0, 2 + Math.floor(Math.random() * 2));
   return [...baseTags, ...picked];
 }
@@ -217,24 +212,36 @@ function generateColors(styleSlug: string): string[] {
     texture: [['#A68A64', '#936639', '#7F5539', '#582F0E'], ['#D5C6B0', '#B7B09C', '#8C8474', '#5E574D'], ['#DEB887', '#D2B48C', '#BC8F8F', '#8B7355']],
     surreal: [['#FF006E', '#8338EC', '#3A86FF', '#FFBE0B'], ['#7400B8', '#6930C3', '#5390D9', '#48BFE3'], ['#F72585', '#B5179E', '#7209B7', '#560BAD']],
   };
-
   const options = palettes[styleSlug] || palettes.abstract;
   return pickRandom(options);
 }
 
-// Build the image generation prompt for Anthropic
+async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const buffer = await response.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    return { data: base64, mimeType: contentType };
+  } catch {
+    return null;
+  }
+}
+
 function buildGenerationPrompt(req: GenerationRequest): string {
   const styleSlug = req.style_name.toLowerCase().replace(/[^a-z-]/g, '').replace(/\s+/g, '-');
   const enhancers = STYLE_ENHANCERS[styleSlug] || STYLE_ENHANCERS.abstract;
   const enhancer = pickRandom(enhancers);
 
   const orientationGuide = {
-    portrait: 'vertical composition, taller than wide, portrait orientation',
-    landscape: 'horizontal composition, wider than tall, landscape orientation',
-    square: 'square composition, equal width and height',
+    portrait: 'vertical composition, taller than wide, portrait orientation, aspect ratio 2:3',
+    landscape: 'horizontal composition, wider than tall, landscape orientation, aspect ratio 3:2',
+    square: 'square composition, equal width and height, aspect ratio 1:1',
   };
 
   const parts = [
+    'Generate an original fine art image.',
     req.prompt_prefix,
     enhancer,
     req.custom_prompt || '',
@@ -243,10 +250,13 @@ function buildGenerationPrompt(req: GenerationRequest): string {
     'Fine art quality, suitable for large format printing. High resolution, rich detail, museum-worthy. No text, watermarks, signatures, or borders.',
   ];
 
+  if (req.reference_images && req.reference_images.length > 0) {
+    parts.push('Use the provided reference images as style and mood inspiration. Create a new original artwork inspired by the aesthetic qualities shown.');
+  }
+
   return parts.filter(Boolean).join('. ');
 }
 
-// Generate a single artwork using Anthropic's image generation
 export async function generateArtwork(
   styleId: string,
   options: {
@@ -257,7 +267,11 @@ export async function generateArtwork(
   } = {}
 ): Promise<GenerationResult> {
   try {
-    // Fetch the style
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      return { success: false, error: 'GOOGLE_API_KEY environment variable not set' };
+    }
+
     const { data: style, error: styleError } = await supabaseAdmin
       .from('art_styles')
       .select('*')
@@ -271,7 +285,8 @@ export async function generateArtwork(
     const styleSlug = style.slug;
     const orientation = options.orientation || pickRandom(['portrait', 'landscape', 'square'] as const);
 
-    // Build the prompt
+    const referenceImageUrls: string[] = style.reference_images || [];
+
     const prompt = buildGenerationPrompt({
       style_id: styleId,
       style_name: style.name,
@@ -279,55 +294,69 @@ export async function generateArtwork(
       custom_prompt: options.customPrompt,
       orientation,
       reference_notes: options.referenceNotes,
+      reference_images: referenceImageUrls,
     });
 
-    // Call Anthropic API to generate image
-    const response = await fetch(ANTHROPIC_API_URL, {
+    const parts: any[] = [{ text: prompt }];
+
+    for (const imgUrl of referenceImageUrls.slice(0, 3)) {
+      const imgData = await fetchImageAsBase64(imgUrl);
+      if (imgData) {
+        parts.push({
+          inline_data: {
+            mime_type: imgData.mimeType,
+            data: imgData.data,
+          },
+        });
+      }
+    }
+
+    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: `Generate an image: ${prompt}`,
-          },
-        ],
+        contents: [{ parts }],
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+        },
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      return { success: false, error: `Anthropic API error: ${response.status} - ${errorText}` };
+      return { success: false, error: `Gemini API error: ${response.status} - ${errorText}` };
     }
 
     const result = await response.json();
 
-    // Extract image from response
-    const imageBlock = result.content?.find((block: any) => block.type === 'image');
-    if (!imageBlock) {
-      return { success: false, error: 'No image generated in response' };
+    const candidates = result.candidates;
+    if (!candidates || candidates.length === 0) {
+      const blockReason = result.promptFeedback?.blockReason;
+      return { success: false, error: blockReason ? `Generation blocked: ${blockReason}` : 'No candidates in response' };
     }
 
-    const imageBase64 = imageBlock.source?.data;
-    const mediaType = imageBlock.source?.media_type || 'image/png';
+    const responseParts = candidates[0].content?.parts || [];
+    const imagePart = responseParts.find((p: any) => p.inlineData);
+
+    if (!imagePart || !imagePart.inlineData) {
+      const textPart = responseParts.find((p: any) => p.text);
+      const debugText = textPart?.text || 'unknown';
+      return { success: false, error: `No image in response. Model said: ${debugText.substring(0, 200)}` };
+    }
+
+    const imageBase64 = imagePart.inlineData.data;
+    const mediaType = imagePart.inlineData.mimeType || 'image/png';
 
     if (!imageBase64) {
       return { success: false, error: 'No image data in response' };
     }
 
-    // Upload to Supabase Storage
     const timestamp = Date.now();
-    const ext = mediaType === 'image/jpeg' ? 'jpg' : 'png';
+    const ext = mediaType.includes('jpeg') || mediaType.includes('jpg') ? 'jpg' : 'png';
     const fileName = `${styleSlug}/${timestamp}.${ext}`;
-    const thumbFileName = `${styleSlug}/thumb_${timestamp}.${ext}`;
 
-    // Upload full-size image
     const imageBuffer = Buffer.from(imageBase64, 'base64');
     const { error: uploadError } = await supabaseAdmin.storage
       .from('artworks')
@@ -340,15 +369,12 @@ export async function generateArtwork(
       return { success: false, error: `Upload failed: ${uploadError.message}` };
     }
 
-    // Get public URLs
     const { data: urlData } = supabaseAdmin.storage
       .from('artworks')
       .getPublicUrl(fileName);
 
     const imageUrl = urlData.publicUrl;
-    const image4kUrl = imageUrl; // Same for now; in production you'd generate a 4K upscale
 
-    // Generate metadata
     const title = generateTitle(styleSlug);
     const description = generateDescription(styleSlug, title);
     const tags = generateTags(styleSlug);
@@ -362,7 +388,6 @@ export async function generateArtwork(
 
     const status = options.autoPublish ? 'published' : 'review';
 
-    // Insert artwork record
     const { data: artwork, error: insertError } = await supabaseAdmin
       .from('artworks')
       .insert({
@@ -370,8 +395,8 @@ export async function generateArtwork(
         slug,
         description,
         image_url: imageUrl,
-        image_4k_url: image4kUrl,
-        thumbnail_url: imageUrl, // Use same URL; Next.js Image will resize
+        image_4k_url: imageUrl,
+        thumbnail_url: imageUrl,
         style_id: styleId,
         tags,
         colors,
@@ -379,7 +404,7 @@ export async function generateArtwork(
         width_px: orientation === 'landscape' ? 3840 : orientation === 'square' ? 3840 : 2560,
         height_px: orientation === 'landscape' ? 2560 : orientation === 'square' ? 3840 : 3840,
         generation_prompt: prompt,
-        generation_model: 'claude-sonnet-4-20250514',
+        generation_model: 'gemini-2.5-flash-image',
         status,
         published_at: status === 'published' ? new Date().toISOString() : null,
       })
@@ -401,7 +426,6 @@ export async function generateArtwork(
   }
 }
 
-// Batch generate artworks
 export async function batchGenerate(
   count: number,
   options: {
@@ -410,7 +434,6 @@ export async function batchGenerate(
     autoPublish?: boolean;
   } = {}
 ): Promise<{ results: GenerationResult[]; summary: { success: number; failed: number } }> {
-  // Fetch all active styles if no specific style
   let styleIds: string[] = [];
 
   if (options.styleId) {
@@ -432,7 +455,7 @@ export async function batchGenerate(
   let failed = 0;
 
   for (let i = 0; i < count; i++) {
-    const styleId = styleIds[i % styleIds.length]; // Rotate through styles
+    const styleId = styleIds[i % styleIds.length];
     const orientation = options.orientation || pickRandom(['portrait', 'landscape', 'square'] as const);
 
     const result = await generateArtwork(styleId, {
@@ -444,7 +467,6 @@ export async function batchGenerate(
     if (result.success) success++;
     else failed++;
 
-    // Rate limit: wait between generations
     if (i < count - 1) {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
@@ -453,7 +475,6 @@ export async function batchGenerate(
   return { results, summary: { success, failed } };
 }
 
-// Get available styles for generation
 export async function getGenerationStyles(): Promise<ArtStyle[]> {
   const { data } = await supabaseAdmin
     .from('art_styles')
