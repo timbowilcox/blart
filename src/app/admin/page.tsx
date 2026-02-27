@@ -82,6 +82,10 @@ export default function AdminPage() {
   const [editDesc, setEditDesc] = useState('');
   const [savingStyle, setSavingStyle] = useState(false);
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActioning, setBulkActioning] = useState(false);
+
   const headers = useCallback(() => ({
     'Authorization': `Bearer ${adminSecret}`,
     'Content-Type': 'application/json',
@@ -314,6 +318,69 @@ export default function AdminPage() {
     setSavingStyle(false);
   };
 
+  // ── Selection helpers ──
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === artworks.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(artworks.map(a => a.id)));
+    }
+  };
+
+  // ── Bulk actions ──
+  const bulkUpdate = async (updates: Record<string, any>) => {
+    if (selectedIds.size === 0) return;
+    setBulkActioning(true);
+    try {
+      const res = await fetch('/api/admin/artworks', {
+        method: 'PUT',
+        headers: headers(),
+        body: JSON.stringify({ ids: Array.from(selectedIds), updates }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessage(`Updated ${data.updated} artwork${data.updated !== 1 ? 's' : ''}`);
+        setSelectedIds(new Set());
+        fetchArtworks(tab);
+      } else {
+        const data = await res.json();
+        setMessage(`Bulk update failed: ${data.error}`);
+      }
+    } catch { setMessage('Bulk update failed'); }
+    setBulkActioning(false);
+  };
+
+  const bulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Permanently delete ${selectedIds.size} artwork${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setBulkActioning(true);
+    try {
+      const res = await fetch('/api/admin/artworks', {
+        method: 'DELETE',
+        headers: headers(),
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessage(`Deleted ${data.deleted} artwork${data.deleted !== 1 ? 's' : ''}`);
+        setSelectedIds(new Set());
+        fetchArtworks(tab);
+      } else {
+        const data = await res.json();
+        setMessage(`Delete failed: ${data.error}`);
+      }
+    } catch { setMessage('Delete failed'); }
+    setBulkActioning(false);
+  };
+
   // ── Preview ──
   const handlePreview = async () => {
     if (!genStyleId) { setMessage('Select a style first to preview'); return; }
@@ -396,7 +463,7 @@ export default function AdminPage() {
           <h1 className="font-display text-xl">Blart Admin</h1>
           <div className="flex items-center gap-1">
             {(['review', 'published', 'archived', 'styles', 'generate', 'settings'] as Tab[]).map((t) => (
-              <button key={t} onClick={() => { setTab(t); setMessage(''); }}
+              <button key={t} onClick={() => { setTab(t); setMessage(''); setSelectedIds(new Set()); }}
                 className={`px-4 py-2 text-xs tracking-wider uppercase transition-colors ${tab === t ? 'bg-blart-black text-white' : 'text-blart-dim hover:text-blart-black'}`}>
                 {t}
               </button>
@@ -787,10 +854,71 @@ export default function AdminPage() {
         {/* ═══════════════════════════════════════════════════════════ */}
         {(tab === 'review' || tab === 'published' || tab === 'archived') && (
           <>
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-4">
               <h2 className="font-display text-2xl capitalize">{tab}</h2>
               <span className="text-sm text-blart-dim">{artworks.length} artwork{artworks.length !== 1 ? 's' : ''}</span>
             </div>
+
+            {/* Bulk action bar */}
+            {artworks.length > 0 && (
+              <div className="flex items-center gap-3 mb-6 bg-white border border-blart-stone/30 px-4 py-3">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={artworks.length > 0 && selectedIds.size === artworks.length}
+                    onChange={selectAll}
+                    className="w-4 h-4 accent-blart-black"
+                  />
+                  <span className="text-xs uppercase tracking-wider text-blart-dim">
+                    {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all'}
+                  </span>
+                </label>
+
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-2 ml-4 pl-4 border-l border-blart-stone/30">
+                    {tab === 'review' && (
+                      <>
+                        <button onClick={() => bulkUpdate({ status: 'published' })} disabled={bulkActioning}
+                          className="px-3 py-1.5 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors uppercase tracking-wider disabled:opacity-50">
+                          Publish ({selectedIds.size})
+                        </button>
+                        <button onClick={() => bulkUpdate({ status: 'archived' })} disabled={bulkActioning}
+                          className="px-3 py-1.5 text-xs bg-blart-ash text-white hover:bg-blart-dim transition-colors uppercase tracking-wider disabled:opacity-50">
+                          Archive ({selectedIds.size})
+                        </button>
+                      </>
+                    )}
+                    {tab === 'published' && (
+                      <button onClick={() => bulkUpdate({ status: 'archived' })} disabled={bulkActioning}
+                        className="px-3 py-1.5 text-xs bg-blart-ash text-white hover:bg-blart-dim transition-colors uppercase tracking-wider disabled:opacity-50">
+                        Archive ({selectedIds.size})
+                      </button>
+                    )}
+                    {tab === 'archived' && (
+                      <>
+                        <button onClick={() => bulkUpdate({ status: 'published' })} disabled={bulkActioning}
+                          className="px-3 py-1.5 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors uppercase tracking-wider disabled:opacity-50">
+                          Publish ({selectedIds.size})
+                        </button>
+                        <button onClick={() => bulkUpdate({ status: 'review' })} disabled={bulkActioning}
+                          className="px-3 py-1.5 text-xs border border-blart-stone/50 text-blart-dim hover:border-blart-black transition-colors uppercase tracking-wider disabled:opacity-50">
+                          → Review ({selectedIds.size})
+                        </button>
+                        <button onClick={bulkDelete} disabled={bulkActioning}
+                          className="px-3 py-1.5 text-xs bg-red-600 text-white hover:bg-red-700 transition-colors uppercase tracking-wider disabled:opacity-50">
+                          Delete ({selectedIds.size})
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => setSelectedIds(new Set())}
+                      className="px-3 py-1.5 text-xs text-blart-dim hover:text-blart-black transition-colors uppercase tracking-wider ml-2">
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {loading ? (
               <div className="text-center py-20 text-blart-dim">Loading...</div>
             ) : artworks.length === 0 ? (
@@ -805,9 +933,26 @@ export default function AdminPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {artworks.map((artwork) => (
-                  <div key={artwork.id} className="bg-white border border-blart-stone/30 group">
-                    <div className="aspect-square overflow-hidden bg-blart-cream cursor-pointer" onClick={() => setModalArtwork(artwork)}>
+                  <div key={artwork.id} className={`bg-white border group ${selectedIds.has(artwork.id) ? 'border-blart-black ring-1 ring-blart-black' : 'border-blart-stone/30'}`}>
+                    <div className="aspect-square overflow-hidden bg-blart-cream cursor-pointer relative" onClick={() => setModalArtwork(artwork)}>
                       <img src={artwork.image_url} alt={artwork.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+                      {/* Selection checkbox */}
+                      <div
+                        className={`absolute top-2 left-2 z-10 ${selectedIds.has(artwork.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
+                        onClick={(e) => { e.stopPropagation(); toggleSelect(artwork.id); }}
+                      >
+                        <div className={`w-6 h-6 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${
+                          selectedIds.has(artwork.id)
+                            ? 'bg-blart-black border-blart-black text-white'
+                            : 'bg-white/90 border-blart-stone/80 hover:border-blart-black'
+                        }`}>
+                          {selectedIds.has(artwork.id) && (
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     <div className="p-3">
                       <p className="text-sm font-display truncate cursor-pointer hover:underline" onClick={() => setModalArtwork(artwork)}>{artwork.title}</p>
@@ -837,6 +982,15 @@ export default function AdminPage() {
                               className="px-2.5 py-1 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors">Publish</button>
                             <button onClick={() => updateArtwork(artwork.id, { status: 'review' })}
                               className="px-2.5 py-1 text-xs border border-blart-stone/50 text-blart-dim hover:border-blart-black transition-colors">→ Review</button>
+                            <button onClick={async () => {
+                              if (!confirm(`Delete "${artwork.title}"? This cannot be undone.`)) return;
+                              try {
+                                const res = await fetch('/api/admin/artworks', { method: 'DELETE', headers: headers(), body: JSON.stringify({ ids: [artwork.id] }) });
+                                if (res.ok) { setMessage('Artwork deleted'); fetchArtworks(tab); }
+                                else { const d = await res.json(); setMessage(`Delete failed: ${d.error}`); }
+                              } catch { setMessage('Delete failed'); }
+                            }}
+                              className="px-2.5 py-1 text-xs border border-red-200 text-red-400 hover:border-red-500 hover:text-red-600 transition-colors">Delete</button>
                           </>
                         )}
                       </div>
