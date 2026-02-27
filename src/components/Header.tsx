@@ -1,10 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-
 import { useState } from 'react';
 
-export default function Header() {
+export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-blart-white/90 backdrop-blur-md border-b border-blart-stone/50">
