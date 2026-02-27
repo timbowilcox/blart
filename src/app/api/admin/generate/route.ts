@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateArtwork, batchGenerate, getGenerationStyles } from '@/lib/generate';
+import { generateArtwork, batchGenerate, getGenerationStyles, previewArtwork, DEFAULT_BASE_PROMPT } from '@/lib/generate';
 
 function isAdmin(request: NextRequest): boolean {
   const authHeader = request.headers.get('Authorization');
@@ -7,31 +7,13 @@ function isAdmin(request: NextRequest): boolean {
   return !!adminSecret && authHeader === `Bearer ${adminSecret}`;
 }
 
-/**
- * POST /api/admin/generate
- * 
- * Generate artwork(s) using the AI engine.
- * 
- * Body:
- *   mode: "single" | "batch"
- *   style_id: string (optional — rotates all styles if omitted)
- *   orientation: "portrait" | "landscape" | "square" (optional — random if omitted)
- *   custom_prompt: string (optional — additional prompt guidance)
- *   reference_notes: string (optional — reference image description)
- *   auto_publish: boolean (default false — sends to review)
- *   count: number (batch mode only, default 10, max 50)
- * 
- * GET /api/admin/generate
- * 
- * Returns available styles for generation.
- */
 export async function GET(request: NextRequest) {
   if (!isAdmin(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const styles = await getGenerationStyles();
-  return NextResponse.json({ styles });
+  return NextResponse.json({ styles, default_base_prompt: DEFAULT_BASE_PROMPT });
 }
 
 export async function POST(request: NextRequest) {
@@ -48,7 +30,26 @@ export async function POST(request: NextRequest) {
     reference_notes,
     auto_publish = false,
     count = 10,
+    base_prompt_override,
+    inspiration_images,
   } = body;
+
+  // Preview mode: generate image but don't save to DB or storage
+  if (mode === 'preview') {
+    if (!style_id) {
+      return NextResponse.json({ error: 'style_id required for preview' }, { status: 400 });
+    }
+
+    const result = await previewArtwork(style_id, {
+      customPrompt: custom_prompt,
+      orientation,
+      referenceNotes: reference_notes,
+      basePromptOverride: base_prompt_override,
+      inspirationImages: inspiration_images,
+    });
+
+    return NextResponse.json(result);
+  }
 
   if (mode === 'single') {
     if (!style_id) {
@@ -60,6 +61,8 @@ export async function POST(request: NextRequest) {
       orientation,
       referenceNotes: reference_notes,
       autoPublish: auto_publish,
+      basePromptOverride: base_prompt_override,
+      inspirationImages: inspiration_images,
     });
 
     return NextResponse.json(result);
@@ -72,10 +75,11 @@ export async function POST(request: NextRequest) {
       styleId: style_id,
       orientation,
       autoPublish: auto_publish,
+      basePromptOverride: base_prompt_override,
     });
 
     return NextResponse.json({ results, summary });
   }
 
-  return NextResponse.json({ error: 'Invalid mode. Use "single" or "batch".' }, { status: 400 });
+  return NextResponse.json({ error: 'Invalid mode. Use "single", "batch", or "preview".' }, { status: 400 });
 }
