@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateArtwork, batchGenerate, getGenerationStyles, previewArtwork, DEFAULT_BASE_PROMPT } from '@/lib/generate';
+import { generateArtwork, batchGenerate, getGenerationStyles, previewArtwork, DEFAULT_BASE_PROMPT, getPersistedBasePrompt } from '@/lib/generate';
 
 function isAdmin(request: NextRequest): boolean {
   const authHeader = request.headers.get('Authorization');
@@ -13,7 +13,8 @@ export async function GET(request: NextRequest) {
   }
 
   const styles = await getGenerationStyles();
-  return NextResponse.json({ styles, default_base_prompt: DEFAULT_BASE_PROMPT });
+  const persistedBasePrompt = await getPersistedBasePrompt();
+  return NextResponse.json({ styles, default_base_prompt: DEFAULT_BASE_PROMPT, persisted_base_prompt: persistedBasePrompt });
 }
 
 export async function POST(request: NextRequest) {
