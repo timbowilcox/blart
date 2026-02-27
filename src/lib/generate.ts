@@ -241,6 +241,20 @@ async function callGemini(prompt: string, imageParts: any[], apiKey: string) {
   return response.json();
 }
 
+// Load the persisted base prompt from site_settings, falling back to DEFAULT_BASE_PROMPT
+export async function getPersistedBasePrompt(): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('site_settings')
+      .select('value')
+      .eq('key', 'base_prompt')
+      .single();
+    return data?.value || DEFAULT_BASE_PROMPT;
+  } catch {
+    return DEFAULT_BASE_PROMPT;
+  }
+}
+
 export async function previewArtwork(
   styleId: string,
   options: { customPrompt?: string; orientation?: 'portrait' | 'landscape' | 'square'; referenceNotes?: string; basePromptOverride?: string; inspirationImages?: string[]; } = {}
@@ -251,13 +265,29 @@ export async function previewArtwork(
     const { data: style, error: styleError } = await supabaseAdmin.from('art_styles').select('*').eq('id', styleId).single();
     if (styleError || !style) return { success: false, error: `Style not found: ${styleId}` };
     const orientation = options.orientation || 'square';
+
+    // Load persisted base prompt if no override provided
+    const basePrompt = options.basePromptOverride || await getPersistedBasePrompt();
+
+    // Use style's persistent reference images (moodboard)
+    const referenceImageUrls: string[] = style.reference_images || [];
+
     const prompt = buildGenerationPrompt({
       style_id: styleId, style_name: style.name,
       prompt_prefix: style.prompt_prefix || `Create a ${style.name.toLowerCase()} artwork`,
       custom_prompt: options.customPrompt, orientation, reference_notes: options.referenceNotes,
-      base_prompt: options.basePromptOverride, inspiration_images: options.inspirationImages,
+      reference_images: referenceImageUrls,
+      base_prompt: basePrompt, inspiration_images: options.inspirationImages,
     });
     const imageParts: any[] = [];
+
+    // Include style's persistent reference images (moodboard)
+    for (const imgUrl of referenceImageUrls.slice(0, 3)) {
+      const imgData = await fetchImageAsBase64(imgUrl);
+      if (imgData) imageParts.push({ inline_data: { mime_type: imgData.mimeType, data: imgData.data } });
+    }
+
+    // Include any per-session inspiration images
     if (options.inspirationImages) {
       for (const imgDataUrl of options.inspirationImages.slice(0, 3)) {
         const match = imgDataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -293,11 +323,15 @@ export async function generateArtwork(
     const styleSlug = style.slug;
     const orientation = options.orientation || pickRandom(['portrait', 'landscape', 'square'] as const);
     const referenceImageUrls: string[] = style.reference_images || [];
+
+    // Load persisted base prompt if no override provided
+    const basePrompt = options.basePromptOverride || await getPersistedBasePrompt();
+
     const prompt = buildGenerationPrompt({
       style_id: styleId, style_name: style.name,
       prompt_prefix: style.prompt_prefix || `Create a ${style.name.toLowerCase()} artwork`,
       custom_prompt: options.customPrompt, orientation, reference_images: referenceImageUrls,
-      base_prompt: options.basePromptOverride, inspiration_images: options.inspirationImages,
+      base_prompt: basePrompt, inspiration_images: options.inspirationImages,
     });
     const imageParts: any[] = [];
     for (const imgUrl of referenceImageUrls.slice(0, 3)) {
