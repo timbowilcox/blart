@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState } from 'react';
 
 export function Header() {
@@ -10,8 +11,8 @@ export function Header() {
     <header className="fixed top-0 left-0 right-0 z-50 bg-blart-white/90 backdrop-blur-md border-b border-blart-stone/50">
       <nav className="max-w-[1800px] mx-auto px-6 md:px-10 h-16 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="font-display text-2xl font-light tracking-tight">
-          blart<span className="text-blart-ash">.ai</span>
+        <Link href="/" className="flex items-center">
+          <Image src="/logo.png" alt="blart" width={120} height={48} className="h-8 w-auto" priority />
         </Link>
 
         {/* Desktop Nav */}
