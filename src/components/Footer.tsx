@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export function Footer() {
   return (
@@ -7,8 +8,8 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
           {/* Brand */}
           <div className="md:col-span-2">
-            <Link href="/" className="font-display text-3xl font-light tracking-tight">
-              blart<span className="text-blart-ash">.ai</span>
+            <Link href="/" className="inline-block">
+              <Image src="/logo.png" alt="blart" width={160} height={64} className="h-10 w-auto" />
             </Link>
             <p className="mt-4 text-sm text-blart-dim max-w-sm leading-relaxed">
               Unique AI-generated art. Free 4K downloads. Museum-quality Giclée framed prints
