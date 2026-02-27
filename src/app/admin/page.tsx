@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface ArtStyle {
   id: string;
@@ -45,17 +45,27 @@ export default function AdminPage() {
   const [generating, setGenerating] = useState(false);
   const [genResults, setGenResults] = useState<any>(null);
 
+  // Base prompt state
+  const [defaultBasePrompt, setDefaultBasePrompt] = useState('');
+  const [genBasePrompt, setGenBasePrompt] = useState('');
+  const [showBasePrompt, setShowBasePrompt] = useState(false);
+
+  // Preview state
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<{ image_data_url?: string; error?: string } | null>(null);
+
+  // Inspiration images state
+  const [inspirationImages, setInspirationImages] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const headers = useCallback(() => ({
     'Authorization': `Bearer ${adminSecret}`,
     'Content-Type': 'application/json',
   }), [adminSecret]);
 
-  // Login
   const handleLogin = async () => {
     try {
-      const res = await fetch('/api/admin/artworks?status=review&limit=1', {
-        headers: headers(),
-      });
+      const res = await fetch('/api/admin/artworks?status=review&limit=1', { headers: headers() });
       if (res.ok) {
         setIsAuthed(true);
         localStorage.setItem('blart_admin_secret', adminSecret);
@@ -67,21 +77,15 @@ export default function AdminPage() {
     }
   };
 
-  // Load saved secret
   useEffect(() => {
     const saved = localStorage.getItem('blart_admin_secret');
-    if (saved) {
-      setAdminSecret(saved);
-    }
+    if (saved) setAdminSecret(saved);
   }, []);
 
-  // Fetch artworks
   const fetchArtworks = useCallback(async (status: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/artworks?status=${status}&limit=100`, {
-        headers: headers(),
-      });
+      const res = await fetch(`/api/admin/artworks?status=${status}&limit=100`, { headers: headers() });
       const data = await res.json();
       setArtworks(data.artworks || []);
     } catch {
@@ -90,30 +94,25 @@ export default function AdminPage() {
     setLoading(false);
   }, [headers]);
 
-  // Fetch styles
   const fetchStyles = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/generate', {
-        headers: headers(),
-      });
+      const res = await fetch('/api/admin/generate', { headers: headers() });
       const data = await res.json();
       setStyles(data.styles || []);
-    } catch {
-      // Styles not critical
-    }
-  }, [headers]);
+      if (data.default_base_prompt && !genBasePrompt) {
+        setDefaultBasePrompt(data.default_base_prompt);
+        setGenBasePrompt(data.default_base_prompt);
+      }
+    } catch {}
+  }, [headers, genBasePrompt]);
 
   useEffect(() => {
     if (isAuthed) {
-      if (tab === 'generate') {
-        fetchStyles();
-      } else {
-        fetchArtworks(tab);
-      }
+      if (tab === 'generate') fetchStyles();
+      else fetchArtworks(tab);
     }
   }, [isAuthed, tab, fetchArtworks, fetchStyles]);
 
-  // Update artwork status
   const updateArtwork = async (id: string, updates: Record<string, any>) => {
     try {
       const res = await fetch('/api/admin/artworks', {
@@ -121,23 +120,57 @@ export default function AdminPage() {
         headers: headers(),
         body: JSON.stringify({ id, ...updates }),
       });
-      if (res.ok) {
-        setMessage(`Updated successfully`);
-        fetchArtworks(tab);
-      } else {
-        setMessage('Update failed');
-      }
-    } catch {
-      setMessage('Update failed');
-    }
+      if (res.ok) { setMessage('Updated successfully'); fetchArtworks(tab); }
+      else setMessage('Update failed');
+    } catch { setMessage('Update failed'); }
   };
 
-  // Generate artwork
+  const handleInspirationUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        setInspirationImages(prev => [...prev, dataUrl].slice(0, 3));
+      };
+      reader.readAsDataURL(file);
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeInspirationImage = (index: number) => {
+    setInspirationImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePreview = async () => {
+    if (!genStyleId) { setMessage('Select a style first to preview'); return; }
+    setPreviewing(true);
+    setPreviewResult(null);
+    setMessage('');
+    try {
+      const res = await fetch('/api/admin/generate', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({
+          mode: 'preview',
+          style_id: genStyleId,
+          orientation: genOrientation || undefined,
+          custom_prompt: genCustomPrompt || undefined,
+          base_prompt_override: genBasePrompt !== defaultBasePrompt ? genBasePrompt : undefined,
+          inspiration_images: inspirationImages.length > 0 ? inspirationImages : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) { setPreviewResult({ image_data_url: data.image_data_url }); }
+      else { setPreviewResult({ error: data.error }); setMessage(`Preview failed: ${data.error}`); }
+    } catch (err: any) { setMessage(`Preview error: ${err.message}`); }
+    setPreviewing(false);
+  };
+
   const handleGenerate = async () => {
     setGenerating(true);
     setGenResults(null);
     setMessage('');
-
     try {
       const res = await fetch('/api/admin/generate', {
         method: 'POST',
@@ -149,26 +182,19 @@ export default function AdminPage() {
           custom_prompt: genCustomPrompt || undefined,
           auto_publish: genAutoPublish,
           count: genCount,
+          base_prompt_override: genBasePrompt !== defaultBasePrompt ? genBasePrompt : undefined,
+          inspiration_images: inspirationImages.length > 0 ? inspirationImages : undefined,
         }),
       });
       const data = await res.json();
       setGenResults(data);
-
-      if (data.success === false) {
-        setMessage(`Generation failed: ${data.error}`);
-      } else if (data.summary) {
-        setMessage(`Batch complete: ${data.summary.success} success, ${data.summary.failed} failed`);
-      } else {
-        setMessage(`Generated: ${data.title || 'artwork'}`);
-      }
-    } catch (err: any) {
-      setMessage(`Error: ${err.message}`);
-    }
-
+      if (data.success === false) setMessage(`Generation failed: ${data.error}`);
+      else if (data.summary) setMessage(`Batch complete: ${data.summary.success} success, ${data.summary.failed} failed`);
+      else setMessage(`Generated: ${data.title || 'artwork'}`);
+    } catch (err: any) { setMessage(`Error: ${err.message}`); }
     setGenerating(false);
   };
 
-  // --- Login Screen ---
   if (!isAuthed) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-blart-cream">
@@ -182,10 +208,7 @@ export default function AdminPage() {
             placeholder="Admin secret"
             className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm font-mono focus:outline-none focus:border-blart-black mb-4"
           />
-          <button
-            onClick={handleLogin}
-            className="w-full bg-blart-black text-white py-3 text-sm tracking-wider uppercase hover:bg-blart-dim transition-colors"
-          >
+          <button onClick={handleLogin} className="w-full bg-blart-black text-white py-3 text-sm tracking-wider uppercase hover:bg-blart-dim transition-colors">
             Enter
           </button>
           {message && <p className="text-red-600 text-xs mt-4 text-center">{message}</p>}
@@ -194,38 +217,26 @@ export default function AdminPage() {
     );
   }
 
-  // --- Admin Dashboard ---
   return (
     <div className="min-h-screen bg-blart-cream">
-      {/* Header */}
       <div className="border-b border-blart-stone/50 bg-white sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <h1 className="font-display text-xl">Blart Admin</h1>
           <div className="flex items-center gap-1">
             {(['review', 'published', 'archived', 'generate'] as Tab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => { setTab(t); setMessage(''); }}
-                className={`px-4 py-2 text-xs tracking-wider uppercase transition-colors ${
-                  tab === t
-                    ? 'bg-blart-black text-white'
-                    : 'text-blart-dim hover:text-blart-black'
-                }`}
-              >
+              <button key={t} onClick={() => { setTab(t); setMessage(''); }}
+                className={`px-4 py-2 text-xs tracking-wider uppercase transition-colors ${tab === t ? 'bg-blart-black text-white' : 'text-blart-dim hover:text-blart-black'}`}>
                 {t}
               </button>
             ))}
           </div>
-          <button
-            onClick={() => { setIsAuthed(false); localStorage.removeItem('blart_admin_secret'); }}
-            className="text-xs text-blart-dim hover:text-blart-black uppercase tracking-wider"
-          >
+          <button onClick={() => { setIsAuthed(false); localStorage.removeItem('blart_admin_secret'); }}
+            className="text-xs text-blart-dim hover:text-blart-black uppercase tracking-wider">
             Logout
           </button>
         </div>
       </div>
 
-      {/* Status Message */}
       {message && (
         <div className="max-w-7xl mx-auto px-6 pt-4">
           <div className="bg-white border border-blart-stone/50 px-4 py-3 text-sm flex items-center justify-between">
@@ -236,7 +247,6 @@ export default function AdminPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* --- Generate Tab --- */}
         {tab === 'generate' && (
           <div className="max-w-2xl">
             <h2 className="font-display text-2xl mb-8">Generate Artwork</h2>
@@ -246,18 +256,12 @@ export default function AdminPage() {
               <div>
                 <label className="block text-xs uppercase tracking-wider text-blart-dim mb-2">Mode</label>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => setGenMode('single')}
-                    className={`px-4 py-2 text-sm border ${genMode === 'single' ? 'bg-blart-black text-white border-blart-black' : 'border-blart-stone/50 text-blart-dim hover:border-blart-black'}`}
-                  >
-                    Single
-                  </button>
-                  <button
-                    onClick={() => setGenMode('batch')}
-                    className={`px-4 py-2 text-sm border ${genMode === 'batch' ? 'bg-blart-black text-white border-blart-black' : 'border-blart-stone/50 text-blart-dim hover:border-blart-black'}`}
-                  >
-                    Batch
-                  </button>
+                  {(['single', 'batch'] as const).map(m => (
+                    <button key={m} onClick={() => setGenMode(m)}
+                      className={`px-4 py-2 text-sm border ${genMode === m ? 'bg-blart-black text-white border-blart-black' : 'border-blart-stone/50 text-blart-dim hover:border-blart-black'}`}>
+                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -266,26 +270,18 @@ export default function AdminPage() {
                 <label className="block text-xs uppercase tracking-wider text-blart-dim mb-2">
                   Style {genMode === 'batch' && '(leave empty to rotate all)'}
                 </label>
-                <select
-                  value={genStyleId}
-                  onChange={(e) => setGenStyleId(e.target.value)}
-                  className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black"
-                >
+                <select value={genStyleId} onChange={(e) => setGenStyleId(e.target.value)}
+                  className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black">
                   <option value="">All styles (rotate)</option>
-                  {styles.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
+                  {styles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
 
               {/* Orientation */}
               <div>
                 <label className="block text-xs uppercase tracking-wider text-blart-dim mb-2">Orientation</label>
-                <select
-                  value={genOrientation}
-                  onChange={(e) => setGenOrientation(e.target.value)}
-                  className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black"
-                >
+                <select value={genOrientation} onChange={(e) => setGenOrientation(e.target.value)}
+                  className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black">
                   <option value="">Random</option>
                   <option value="portrait">Portrait</option>
                   <option value="landscape">Landscape</option>
@@ -293,17 +289,69 @@ export default function AdminPage() {
                 </select>
               </div>
 
+              {/* Base Prompt */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs uppercase tracking-wider text-blart-dim">Base Prompt (applied to all generations)</label>
+                  <button onClick={() => setShowBasePrompt(!showBasePrompt)}
+                    className="text-xs text-blart-ash hover:text-blart-black uppercase tracking-wider">
+                    {showBasePrompt ? 'Hide ↑' : 'Edit ↓'}
+                  </button>
+                </div>
+                {showBasePrompt && (
+                  <div className="space-y-2">
+                    <textarea value={genBasePrompt} onChange={(e) => setGenBasePrompt(e.target.value)} rows={6}
+                      className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black resize-none font-mono text-xs" />
+                    <div className="flex gap-2 items-center">
+                      <button onClick={() => setGenBasePrompt(defaultBasePrompt)}
+                        className="text-xs text-blart-dim hover:text-blart-black underline">
+                        Reset to default
+                      </button>
+                      {genBasePrompt !== defaultBasePrompt && (
+                        <span className="text-xs text-amber-600">● Custom base prompt active</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {!showBasePrompt && genBasePrompt !== defaultBasePrompt && (
+                  <p className="text-xs text-amber-600">● Custom base prompt active</p>
+                )}
+              </div>
+
+              {/* Inspiration Images */}
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-blart-dim mb-2">
+                  Inspiration Images (up to 3)
+                </label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {inspirationImages.map((img, i) => (
+                    <div key={i} className="relative w-20 h-20 border border-blart-stone/50 overflow-hidden group">
+                      <img src={img} alt={`Inspiration ${i + 1}`} className="w-full h-full object-cover" />
+                      <button onClick={() => removeInspirationImage(i)}
+                        className="absolute inset-0 bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  {inspirationImages.length < 3 && (
+                    <button onClick={() => fileInputRef.current?.click()}
+                      className="w-20 h-20 border border-dashed border-blart-stone/60 text-blart-ash hover:border-blart-black hover:text-blart-black transition-colors flex flex-col items-center justify-center text-xs gap-1">
+                      <span className="text-lg leading-none">+</span>
+                      <span>Upload</span>
+                    </button>
+                  )}
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleInspirationUpload} className="hidden" />
+                <p className="text-xs text-blart-ash">Images sent to Gemini as style/mood reference. Not saved to the database.</p>
+              </div>
+
               {/* Custom Prompt (single mode) */}
               {genMode === 'single' && (
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-blart-dim mb-2">Custom Prompt (optional)</label>
-                  <textarea
-                    value={genCustomPrompt}
-                    onChange={(e) => setGenCustomPrompt(e.target.value)}
-                    rows={3}
+                  <textarea value={genCustomPrompt} onChange={(e) => setGenCustomPrompt(e.target.value)} rows={3}
                     placeholder="Additional guidance for the AI artist..."
-                    className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black resize-none"
-                  />
+                    className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black resize-none" />
                 </div>
               )}
 
@@ -311,50 +359,54 @@ export default function AdminPage() {
               {genMode === 'batch' && (
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-blart-dim mb-2">Count (max 50)</label>
-                  <input
-                    type="number"
-                    value={genCount}
+                  <input type="number" value={genCount}
                     onChange={(e) => setGenCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 1)))}
-                    min={1}
-                    max={50}
-                    className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm font-mono focus:outline-none focus:border-blart-black"
-                  />
+                    min={1} max={50}
+                    className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm font-mono focus:outline-none focus:border-blart-black" />
                 </div>
               )}
 
               {/* Auto-publish */}
               <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="autoPublish"
-                  checked={genAutoPublish}
-                  onChange={(e) => setGenAutoPublish(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="autoPublish" className="text-sm text-blart-dim">
-                  Auto-publish (skip review)
-                </label>
+                <input type="checkbox" id="autoPublish" checked={genAutoPublish}
+                  onChange={(e) => setGenAutoPublish(e.target.checked)} className="w-4 h-4" />
+                <label htmlFor="autoPublish" className="text-sm text-blart-dim">Auto-publish (skip review)</label>
               </div>
 
-              {/* Generate Button */}
-              <button
-                onClick={handleGenerate}
-                disabled={generating || (genMode === 'single' && !genStyleId)}
-                className={`w-full py-4 text-sm tracking-wider uppercase transition-colors ${
-                  generating
-                    ? 'bg-blart-ash text-white cursor-wait'
-                    : 'bg-blart-black text-white hover:bg-blart-dim'
-                } disabled:opacity-40 disabled:cursor-not-allowed`}
-              >
-                {generating
-                  ? genMode === 'batch'
-                    ? `Generating ${genCount} artworks...`
-                    : 'Generating...'
-                  : genMode === 'batch'
-                    ? `Generate ${genCount} artworks`
-                    : 'Generate artwork'}
-              </button>
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                {genMode === 'single' && (
+                  <button onClick={handlePreview} disabled={previewing || generating || !genStyleId}
+                    className={`flex-1 py-4 text-sm tracking-wider uppercase transition-colors border ${
+                      previewing ? 'border-blart-stone/50 text-blart-ash cursor-wait' : 'border-blart-black text-blart-black hover:bg-blart-black hover:text-white'
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}>
+                    {previewing ? 'Previewing...' : 'Preview'}
+                  </button>
+                )}
+                <button onClick={handleGenerate} disabled={generating || previewing || (genMode === 'single' && !genStyleId)}
+                  className={`flex-1 py-4 text-sm tracking-wider uppercase transition-colors ${
+                    generating ? 'bg-blart-ash text-white cursor-wait' : 'bg-blart-black text-white hover:bg-blart-dim'
+                  } disabled:opacity-40 disabled:cursor-not-allowed`}>
+                  {generating
+                    ? genMode === 'batch' ? `Generating ${genCount} artworks...` : 'Generating...'
+                    : genMode === 'batch' ? `Generate ${genCount} artworks` : 'Generate & Save'}
+                </button>
+              </div>
             </div>
+
+            {/* Preview Result */}
+            {previewResult && (
+              <div className="mt-6 bg-white p-6 border border-blart-stone/30">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm uppercase tracking-wider text-blart-dim">Preview</h3>
+                  <span className="text-xs text-blart-ash">Not saved — click Generate & Save to keep</span>
+                </div>
+                {previewResult.image_data_url
+                  ? <img src={previewResult.image_data_url} alt="Preview" className="w-full border border-blart-stone/30" />
+                  : <p className="text-red-600 text-sm">{previewResult.error}</p>
+                }
+              </div>
+            )}
 
             {/* Generation Results */}
             {genResults && (
@@ -373,11 +425,7 @@ export default function AdminPage() {
                   </div>
                 ) : genResults.success ? (
                   <div className="flex items-start gap-4">
-                    <img
-                      src={genResults.image_url || ''}
-                      alt={genResults.title}
-                      className="w-32 h-32 object-cover border border-blart-stone/30"
-                    />
+                    <img src={genResults.image_url || ''} alt={genResults.title} className="w-32 h-32 object-cover border border-blart-stone/30" />
                     <div>
                       <p className="font-display text-lg">{genResults.title}</p>
                       <p className="text-xs text-blart-dim font-mono mt-1">{genResults.slug}</p>
@@ -391,24 +439,19 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* --- Artworks Grid (Review / Published / Archived) --- */}
         {tab !== 'generate' && (
           <>
             <div className="flex items-center justify-between mb-8">
               <h2 className="font-display text-2xl capitalize">{tab}</h2>
               <span className="text-sm text-blart-dim">{artworks.length} artwork{artworks.length !== 1 ? 's' : ''}</span>
             </div>
-
             {loading ? (
               <div className="text-center py-20 text-blart-dim">Loading...</div>
             ) : artworks.length === 0 ? (
               <div className="text-center py-20 text-blart-dim">
                 <p>No {tab} artworks</p>
                 {tab === 'review' && (
-                  <button
-                    onClick={() => setTab('generate')}
-                    className="mt-4 text-sm underline hover:text-blart-black"
-                  >
+                  <button onClick={() => setTab('generate')} className="mt-4 text-sm underline hover:text-blart-black">
                     Generate some →
                   </button>
                 )}
@@ -417,76 +460,37 @@ export default function AdminPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {artworks.map((artwork) => (
                   <div key={artwork.id} className="bg-white border border-blart-stone/30 group">
-                    {/* Image */}
                     <div className="aspect-square overflow-hidden bg-blart-cream">
-                      <img
-                        src={artwork.image_url}
-                        alt={artwork.title}
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={artwork.image_url} alt={artwork.title} className="w-full h-full object-cover" />
                     </div>
-
-                    {/* Info */}
                     <div className="p-3">
                       <p className="text-sm font-display truncate">{artwork.title}</p>
-                      <p className="text-xs text-blart-dim mt-0.5">
-                        {artwork.art_styles?.name || 'Unknown'} · {artwork.orientation}
-                      </p>
-
-                      {/* Actions */}
+                      <p className="text-xs text-blart-dim mt-0.5">{artwork.art_styles?.name || 'Unknown'} · {artwork.orientation}</p>
                       <div className="flex flex-wrap gap-1.5 mt-3">
                         {tab === 'review' && (
                           <>
-                            <button
-                              onClick={() => updateArtwork(artwork.id, { status: 'published' })}
-                              className="px-2.5 py-1 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors"
-                            >
-                              Publish
-                            </button>
-                            <button
-                              onClick={() => updateArtwork(artwork.id, { status: 'archived' })}
-                              className="px-2.5 py-1 text-xs bg-blart-ash text-white hover:bg-blart-dim transition-colors"
-                            >
-                              Archive
-                            </button>
+                            <button onClick={() => updateArtwork(artwork.id, { status: 'published' })}
+                              className="px-2.5 py-1 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors">Publish</button>
+                            <button onClick={() => updateArtwork(artwork.id, { status: 'archived' })}
+                              className="px-2.5 py-1 text-xs bg-blart-ash text-white hover:bg-blart-dim transition-colors">Archive</button>
                           </>
                         )}
-
                         {tab === 'published' && (
                           <>
-                            <button
-                              onClick={() => updateArtwork(artwork.id, { is_featured: !artwork.is_featured })}
-                              className={`px-2.5 py-1 text-xs border transition-colors ${
-                                artwork.is_featured
-                                  ? 'bg-amber-600 text-white border-amber-600'
-                                  : 'border-blart-stone/50 text-blart-dim hover:border-blart-black'
-                              }`}
-                            >
+                            <button onClick={() => updateArtwork(artwork.id, { is_featured: !artwork.is_featured })}
+                              className={`px-2.5 py-1 text-xs border transition-colors ${artwork.is_featured ? 'bg-amber-600 text-white border-amber-600' : 'border-blart-stone/50 text-blart-dim hover:border-blart-black'}`}>
                               {artwork.is_featured ? '★ Featured' : '☆ Feature'}
                             </button>
-                            <button
-                              onClick={() => updateArtwork(artwork.id, { status: 'archived' })}
-                              className="px-2.5 py-1 text-xs border border-blart-stone/50 text-blart-dim hover:border-blart-black transition-colors"
-                            >
-                              Archive
-                            </button>
+                            <button onClick={() => updateArtwork(artwork.id, { status: 'archived' })}
+                              className="px-2.5 py-1 text-xs border border-blart-stone/50 text-blart-dim hover:border-blart-black transition-colors">Archive</button>
                           </>
                         )}
-
                         {tab === 'archived' && (
                           <>
-                            <button
-                              onClick={() => updateArtwork(artwork.id, { status: 'published' })}
-                              className="px-2.5 py-1 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors"
-                            >
-                              Publish
-                            </button>
-                            <button
-                              onClick={() => updateArtwork(artwork.id, { status: 'review' })}
-                              className="px-2.5 py-1 text-xs border border-blart-stone/50 text-blart-dim hover:border-blart-black transition-colors"
-                            >
-                              → Review
-                            </button>
+                            <button onClick={() => updateArtwork(artwork.id, { status: 'published' })}
+                              className="px-2.5 py-1 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors">Publish</button>
+                            <button onClick={() => updateArtwork(artwork.id, { status: 'review' })}
+                              className="px-2.5 py-1 text-xs border border-blart-stone/50 text-blart-dim hover:border-blart-black transition-colors">→ Review</button>
                           </>
                         )}
                       </div>
