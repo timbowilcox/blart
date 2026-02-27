@@ -6,7 +6,11 @@ interface ArtStyle {
   id: string;
   name: string;
   slug: string;
+  description: string | null;
   prompt_prefix: string | null;
+  reference_images: string[];
+  is_active: boolean;
+  sort_order: number;
 }
 
 interface Artwork {
@@ -24,18 +28,18 @@ interface Artwork {
   art_styles?: { name: string; slug: string };
 }
 
-type Tab = 'review' | 'published' | 'archived' | 'generate';
+type Tab = 'review' | 'published' | 'archived' | 'styles' | 'generate' | 'settings';
 
 export default function AdminPage() {
   const [adminSecret, setAdminSecret] = useState('');
   const [isAuthed, setIsAuthed] = useState(false);
   const [tab, setTab] = useState<Tab>('review');
   const [artworks, setArtworks] = useState<Artwork[]>([]);
-  const [styles, setStyles] = useState<ArtStyle[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   // Generation state
+  const [genStyles, setGenStyles] = useState<{ id: string; name: string; slug: string; prompt_prefix: string | null }[]>([]);
   const [genMode, setGenMode] = useState<'single' | 'batch'>('single');
   const [genStyleId, setGenStyleId] = useState('');
   const [genOrientation, setGenOrientation] = useState('');
@@ -45,18 +49,22 @@ export default function AdminPage() {
   const [generating, setGenerating] = useState(false);
   const [genResults, setGenResults] = useState<any>(null);
 
-  // Base prompt state
-  const [defaultBasePrompt, setDefaultBasePrompt] = useState('');
-  const [genBasePrompt, setGenBasePrompt] = useState('');
-  const [showBasePrompt, setShowBasePrompt] = useState(false);
-
   // Preview state
   const [previewing, setPreviewing] = useState(false);
   const [previewResult, setPreviewResult] = useState<{ image_data_url?: string; error?: string } | null>(null);
 
-  // Inspiration images state
-  const [inspirationImages, setInspirationImages] = useState<string[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Settings state (master prompt)
+  const [defaultBasePrompt, setDefaultBasePrompt] = useState('');
+  const [persistedBasePrompt, setPersistedBasePrompt] = useState('');
+  const [settingsBasePrompt, setSettingsBasePrompt] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Styles management state
+  const [allStyles, setAllStyles] = useState<ArtStyle[]>([]);
+  const [stylesLoading, setStylesLoading] = useState(false);
+  const [uploadingStyleId, setUploadingStyleId] = useState<string | null>(null);
+  const styleFileInputRef = useRef<HTMLInputElement>(null);
+  const [activeUploadStyleId, setActiveUploadStyleId] = useState<string | null>(null);
 
   const headers = useCallback(() => ({
     'Authorization': `Bearer ${adminSecret}`,
@@ -82,6 +90,7 @@ export default function AdminPage() {
     if (saved) setAdminSecret(saved);
   }, []);
 
+  // ── Fetch artworks ──
   const fetchArtworks = useCallback(async (status: string) => {
     setLoading(true);
     try {
@@ -94,25 +103,59 @@ export default function AdminPage() {
     setLoading(false);
   }, [headers]);
 
-  const fetchStyles = useCallback(async () => {
+  // ── Fetch generation styles (lightweight, for Generate tab) ──
+  const fetchGenStyles = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/generate', { headers: headers() });
       const data = await res.json();
-      setStyles(data.styles || []);
-      if (data.default_base_prompt && !genBasePrompt) {
-        setDefaultBasePrompt(data.default_base_prompt);
-        setGenBasePrompt(data.default_base_prompt);
+      setGenStyles(data.styles || []);
+      if (data.default_base_prompt) setDefaultBasePrompt(data.default_base_prompt);
+      if (data.persisted_base_prompt) setPersistedBasePrompt(data.persisted_base_prompt);
+    } catch {}
+  }, [headers]);
+
+  // ── Fetch settings (master prompt) ──
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings?key=base_prompt', { headers: headers() });
+      const data = await res.json();
+      if (data.value) {
+        setSettingsBasePrompt(data.value);
+        setPersistedBasePrompt(data.value);
+      } else {
+        // No persisted prompt yet, use the default
+        setSettingsBasePrompt(defaultBasePrompt);
       }
     } catch {}
-  }, [headers, genBasePrompt]);
+  }, [headers, defaultBasePrompt]);
 
+  // ── Fetch all styles (full data, for Styles tab) ──
+  const fetchAllStyles = useCallback(async () => {
+    setStylesLoading(true);
+    try {
+      const res = await fetch('/api/admin/styles', { headers: headers() });
+      const data = await res.json();
+      setAllStyles(data.styles || []);
+    } catch {
+      setMessage('Failed to fetch styles');
+    }
+    setStylesLoading(false);
+  }, [headers]);
+
+  // ── Tab routing ──
   useEffect(() => {
     if (isAuthed) {
-      if (tab === 'generate') fetchStyles();
+      if (tab === 'generate') fetchGenStyles();
+      else if (tab === 'settings') {
+        if (!defaultBasePrompt) fetchGenStyles();
+        fetchSettings();
+      }
+      else if (tab === 'styles') fetchAllStyles();
       else fetchArtworks(tab);
     }
-  }, [isAuthed, tab, fetchArtworks, fetchStyles]);
+  }, [isAuthed, tab, fetchArtworks, fetchGenStyles, fetchSettings, fetchAllStyles, defaultBasePrompt]);
 
+  // ── Artwork management ──
   const updateArtwork = async (id: string, updates: Record<string, any>) => {
     try {
       const res = await fetch('/api/admin/artworks', {
@@ -125,23 +168,81 @@ export default function AdminPage() {
     } catch { setMessage('Update failed'); }
   };
 
-  const handleInspirationUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string;
-        setInspirationImages(prev => [...prev, dataUrl].slice(0, 3));
-      };
-      reader.readAsDataURL(file);
-    });
-    if (fileInputRef.current) fileInputRef.current.value = '';
+  // ── Save master prompt to DB ──
+  const saveBasePrompt = async () => {
+    setSavingSettings(true);
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: headers(),
+        body: JSON.stringify({ key: 'base_prompt', value: settingsBasePrompt }),
+      });
+      if (res.ok) {
+        setMessage('Master prompt saved');
+        setPersistedBasePrompt(settingsBasePrompt);
+      } else {
+        setMessage('Failed to save master prompt');
+      }
+    } catch {
+      setMessage('Failed to save master prompt');
+    }
+    setSavingSettings(false);
   };
 
-  const removeInspirationImage = (index: number) => {
-    setInspirationImages(prev => prev.filter((_, i) => i !== index));
+  // ── Style moodboard image upload ──
+  const handleStyleImageUpload = async (styleId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingStyleId(styleId);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target?.result as string;
+      try {
+        const res = await fetch('/api/admin/styles', {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({ style_id: styleId, image_data_url: dataUrl }),
+        });
+        if (res.ok) {
+          setMessage('Reference image uploaded');
+          fetchAllStyles();
+        } else {
+          const data = await res.json();
+          setMessage(`Upload failed: ${data.error}`);
+        }
+      } catch {
+        setMessage('Upload failed');
+      }
+      setUploadingStyleId(null);
+    };
+    reader.readAsDataURL(file);
+    if (styleFileInputRef.current) styleFileInputRef.current.value = '';
   };
 
+  // ── Remove reference image from style ──
+  const removeStyleImage = async (styleId: string, imageUrl: string) => {
+    const style = allStyles.find(s => s.id === styleId);
+    if (!style) return;
+    const updatedImages = (style.reference_images || []).filter(url => url !== imageUrl);
+    try {
+      const res = await fetch('/api/admin/styles', {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({ id: styleId, reference_images: updatedImages }),
+      });
+      if (res.ok) {
+        setMessage('Image removed');
+        fetchAllStyles();
+      } else {
+        setMessage('Failed to remove image');
+      }
+    } catch {
+      setMessage('Failed to remove image');
+    }
+  };
+
+  // ── Preview ──
   const handlePreview = async () => {
     if (!genStyleId) { setMessage('Select a style first to preview'); return; }
     setPreviewing(true);
@@ -156,8 +257,6 @@ export default function AdminPage() {
           style_id: genStyleId,
           orientation: genOrientation || undefined,
           custom_prompt: genCustomPrompt || undefined,
-          base_prompt_override: genBasePrompt !== defaultBasePrompt ? genBasePrompt : undefined,
-          inspiration_images: inspirationImages.length > 0 ? inspirationImages : undefined,
         }),
       });
       const data = await res.json();
@@ -167,6 +266,7 @@ export default function AdminPage() {
     setPreviewing(false);
   };
 
+  // ── Generate ──
   const handleGenerate = async () => {
     setGenerating(true);
     setGenResults(null);
@@ -182,8 +282,6 @@ export default function AdminPage() {
           custom_prompt: genCustomPrompt || undefined,
           auto_publish: genAutoPublish,
           count: genCount,
-          base_prompt_override: genBasePrompt !== defaultBasePrompt ? genBasePrompt : undefined,
-          inspiration_images: inspirationImages.length > 0 ? inspirationImages : undefined,
         }),
       });
       const data = await res.json();
@@ -195,6 +293,7 @@ export default function AdminPage() {
     setGenerating(false);
   };
 
+  // ── Login screen ──
   if (!isAuthed) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-blart-cream">
@@ -217,13 +316,14 @@ export default function AdminPage() {
     );
   }
 
+  // ── Main layout ──
   return (
     <div className="min-h-screen bg-blart-cream">
       <div className="border-b border-blart-stone/50 bg-white sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <h1 className="font-display text-xl">Blart Admin</h1>
           <div className="flex items-center gap-1">
-            {(['review', 'published', 'archived', 'generate'] as Tab[]).map((t) => (
+            {(['review', 'published', 'archived', 'styles', 'generate', 'settings'] as Tab[]).map((t) => (
               <button key={t} onClick={() => { setTab(t); setMessage(''); }}
                 className={`px-4 py-2 text-xs tracking-wider uppercase transition-colors ${tab === t ? 'bg-blart-black text-white' : 'text-blart-dim hover:text-blart-black'}`}>
                 {t}
@@ -247,9 +347,142 @@ export default function AdminPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
+
+        {/* SETTINGS TAB — Master Prompt */}
+        {tab === 'settings' && (
+          <div className="max-w-3xl">
+            <h2 className="font-display text-2xl mb-2">Settings</h2>
+            <p className="text-sm text-blart-dim mb-8">Global configuration that applies across all generations.</p>
+
+            <div className="bg-white p-8 border border-blart-stone/30">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm uppercase tracking-wider font-medium">Master Prompt</h3>
+                  <p className="text-xs text-blart-ash mt-1">
+                    This base prompt is prepended to every artwork generation, regardless of style.
+                    It defines the overall quality and creative direction of all Blart artwork.
+                  </p>
+                </div>
+              </div>
+
+              <textarea
+                value={settingsBasePrompt}
+                onChange={(e) => setSettingsBasePrompt(e.target.value)}
+                rows={10}
+                className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black resize-none font-mono text-xs leading-relaxed"
+              />
+
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex gap-3 items-center">
+                  <button
+                    onClick={() => setSettingsBasePrompt(defaultBasePrompt)}
+                    className="text-xs text-blart-dim hover:text-blart-black underline"
+                  >
+                    Reset to factory default
+                  </button>
+                  {settingsBasePrompt !== persistedBasePrompt && (
+                    <span className="text-xs text-amber-600">● Unsaved changes</span>
+                  )}
+                </div>
+                <button
+                  onClick={saveBasePrompt}
+                  disabled={savingSettings || settingsBasePrompt === persistedBasePrompt}
+                  className={`px-6 py-2.5 text-sm tracking-wider uppercase transition-colors ${
+                    savingSettings ? 'bg-blart-ash text-white cursor-wait' :
+                    settingsBasePrompt === persistedBasePrompt ? 'bg-blart-stone/30 text-blart-ash cursor-not-allowed' :
+                    'bg-blart-black text-white hover:bg-blart-dim'
+                  }`}
+                >
+                  {savingSettings ? 'Saving...' : 'Save Prompt'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STYLES TAB — Per-Style Moodboards */}
+        {tab === 'styles' && (
+          <div>
+            <h2 className="font-display text-2xl mb-2">Styles & Moodboards</h2>
+            <p className="text-sm text-blart-dim mb-8">
+              Manage reference images for each art style. These images are sent to the AI as visual context
+              with every generation in that style — they act as a persistent moodboard.
+            </p>
+
+            {stylesLoading ? (
+              <div className="text-center py-20 text-blart-dim">Loading styles...</div>
+            ) : (
+              <div className="space-y-6">
+                {allStyles.map((style) => (
+                  <div key={style.id} className="bg-white border border-blart-stone/30 p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="font-display text-lg">{style.name}</h3>
+                        <p className="text-xs text-blart-ash font-mono mt-0.5">{style.slug}</p>
+                        {style.description && (
+                          <p className="text-sm text-blart-dim mt-1">{style.description}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-1 ${style.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                          {style.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Reference images grid */}
+                    <div className="flex flex-wrap gap-3">
+                      {(style.reference_images || []).map((imgUrl, i) => (
+                        <div key={i} className="relative w-28 h-28 border border-blart-stone/50 overflow-hidden group bg-blart-cream">
+                          <img src={imgUrl} alt={`${style.name} ref ${i + 1}`} className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => removeStyleImage(style.id, imgUrl)}
+                            className="absolute inset-0 bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* Upload button */}
+                      <label className="w-28 h-28 border border-dashed border-blart-stone/60 text-blart-ash hover:border-blart-black hover:text-blart-black transition-colors flex flex-col items-center justify-center text-xs gap-1 cursor-pointer">
+                        {uploadingStyleId === style.id ? (
+                          <span className="text-xs">Uploading...</span>
+                        ) : (
+                          <>
+                            <span className="text-lg leading-none">+</span>
+                            <span>Add image</span>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingStyleId === style.id}
+                          onChange={(e) => handleStyleImageUpload(style.id, e)}
+                        />
+                      </label>
+                    </div>
+
+                    {(style.reference_images || []).length > 0 && (
+                      <p className="text-xs text-blart-ash mt-3">
+                        {(style.reference_images || []).length} reference image{(style.reference_images || []).length !== 1 ? 's' : ''} — sent as mood/style context with every {style.name} generation
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* GENERATE TAB — Simplified (no base prompt, no inspiration) */}
         {tab === 'generate' && (
           <div className="max-w-2xl">
-            <h2 className="font-display text-2xl mb-8">Generate Artwork</h2>
+            <h2 className="font-display text-2xl mb-2">Generate Artwork</h2>
+            <p className="text-sm text-blart-dim mb-8">
+              Master prompt and moodboard images are configured in Settings and Styles tabs.
+            </p>
 
             <div className="space-y-6 bg-white p-8 border border-blart-stone/30">
               {/* Mode */}
@@ -273,7 +506,7 @@ export default function AdminPage() {
                 <select value={genStyleId} onChange={(e) => setGenStyleId(e.target.value)}
                   className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black">
                   <option value="">All styles (rotate)</option>
-                  {styles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {genStyles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
 
@@ -289,68 +522,12 @@ export default function AdminPage() {
                 </select>
               </div>
 
-              {/* Base Prompt */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs uppercase tracking-wider text-blart-dim">Base Prompt (applied to all generations)</label>
-                  <button onClick={() => setShowBasePrompt(!showBasePrompt)}
-                    className="text-xs text-blart-ash hover:text-blart-black uppercase tracking-wider">
-                    {showBasePrompt ? 'Hide ↑' : 'Edit ↓'}
-                  </button>
-                </div>
-                {showBasePrompt && (
-                  <div className="space-y-2">
-                    <textarea value={genBasePrompt} onChange={(e) => setGenBasePrompt(e.target.value)} rows={6}
-                      className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black resize-none font-mono text-xs" />
-                    <div className="flex gap-2 items-center">
-                      <button onClick={() => setGenBasePrompt(defaultBasePrompt)}
-                        className="text-xs text-blart-dim hover:text-blart-black underline">
-                        Reset to default
-                      </button>
-                      {genBasePrompt !== defaultBasePrompt && (
-                        <span className="text-xs text-amber-600">● Custom base prompt active</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {!showBasePrompt && genBasePrompt !== defaultBasePrompt && (
-                  <p className="text-xs text-amber-600">● Custom base prompt active</p>
-                )}
-              </div>
-
-              {/* Inspiration Images */}
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-blart-dim mb-2">
-                  Inspiration Images (up to 3)
-                </label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {inspirationImages.map((img, i) => (
-                    <div key={i} className="relative w-20 h-20 border border-blart-stone/50 overflow-hidden group">
-                      <img src={img} alt={`Inspiration ${i + 1}`} className="w-full h-full object-cover" />
-                      <button onClick={() => removeInspirationImage(i)}
-                        className="absolute inset-0 bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                  {inspirationImages.length < 3 && (
-                    <button onClick={() => fileInputRef.current?.click()}
-                      className="w-20 h-20 border border-dashed border-blart-stone/60 text-blart-ash hover:border-blart-black hover:text-blart-black transition-colors flex flex-col items-center justify-center text-xs gap-1">
-                      <span className="text-lg leading-none">+</span>
-                      <span>Upload</span>
-                    </button>
-                  )}
-                </div>
-                <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleInspirationUpload} className="hidden" />
-                <p className="text-xs text-blart-ash">Images sent to Gemini as style/mood reference. Not saved to the database.</p>
-              </div>
-
               {/* Custom Prompt (single mode) */}
               {genMode === 'single' && (
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-blart-dim mb-2">Custom Prompt (optional)</label>
                   <textarea value={genCustomPrompt} onChange={(e) => setGenCustomPrompt(e.target.value)} rows={3}
-                    placeholder="Additional guidance for the AI artist..."
+                    placeholder="Additional guidance for this specific generation..."
                     className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black resize-none" />
                 </div>
               )}
@@ -439,7 +616,8 @@ export default function AdminPage() {
           </div>
         )}
 
-        {tab !== 'generate' && (
+        {/* ARTWORK TABS — Review, Published, Archived */}
+        {(tab === 'review' || tab === 'published' || tab === 'archived') && (
           <>
             <div className="flex items-center justify-between mb-8">
               <h2 className="font-display text-2xl capitalize">{tab}</h2>
