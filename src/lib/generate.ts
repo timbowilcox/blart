@@ -1,9 +1,27 @@
 import { supabaseAdmin } from './supabase';
 import type { ArtStyle } from './supabase';
 
-// --- Google Gemini (Nano Banana) Image Generation ---
+// --- Google Gemini 3.1 Flash Image (Nano Banana 2) ---
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent';
+const GEMINI_MODEL = 'gemini-3.1-flash-image-preview';
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+// ============================================================
+// BASE PROMPT - Applied to ALL image generations regardless of style
+// Edit this to change the overall artistic direction of Blart
+// ============================================================
+const BASE_PROMPT = `You are an elite fine art creator producing original artwork for a premium digital art gallery called "Blart". 
+
+Every piece must be:
+- Museum-quality fine art suitable for large format printing on canvas or archival paper
+- Richly detailed with intentional composition, lighting, and color harmony
+- Original and distinctive — never generic, stock-photo-like, or clip-art style
+- Free of any text, watermarks, signatures, borders, frames, or UI elements
+- Emotionally evocative and visually striking — the kind of art that makes people stop and stare
+
+The artwork should feel like it belongs in a curated contemporary art gallery. Think bold artistic choices, masterful use of color and light, and compositions that reward close viewing. Each piece should have a clear focal point and sense of depth.`;
+
+// ============================================================
 
 interface GenerationRequest {
   style_id: string;
@@ -25,74 +43,74 @@ interface GenerationResult {
 
 const STYLE_ENHANCERS: Record<string, string[]> = {
   abstract: [
-    'bold color fields and organic shapes',
-    'layered textures with dripping paint effects',
-    'geometric fragments dissolving into chaos',
-    'vibrant acrylic splashes on raw canvas',
-    'meditative color gradients with subtle texture',
+    'bold color fields and organic shapes with impasto texture',
+    'layered textures with dripping paint effects and raw energy',
+    'geometric fragments dissolving into expressive chaos',
+    'vibrant acrylic splashes on raw canvas with gestural marks',
+    'meditative color gradients with subtle texture and depth',
   ],
   geometric: [
-    'precise tessellations in warm earth tones',
-    'overlapping translucent polygons',
-    'isometric impossible architecture',
-    'sacred geometry with gold leaf accents',
-    'minimalist line compositions with negative space',
+    'precise tessellations in warm earth tones with metallic accents',
+    'overlapping translucent polygons creating luminous depth',
+    'isometric impossible architecture with dramatic shadows',
+    'sacred geometry with gold leaf accents on deep backgrounds',
+    'minimalist line compositions with negative space and one bold color',
   ],
   landscapes: [
-    'misty mountain valley at golden hour',
-    'vast desert dunes under starlight',
-    'tropical coast with turquoise water',
-    'snow-covered forest in soft morning light',
-    'rolling hills with dramatic storm clouds',
+    'misty mountain valley at golden hour with atmospheric perspective',
+    'vast desert dunes under starlight with deep shadows',
+    'tropical coast with turquoise water and dramatic sky',
+    'snow-covered forest in soft morning light filtering through trees',
+    'rolling hills with dramatic storm clouds and shafts of light',
   ],
   botanical: [
-    'oversized tropical leaves in close-up detail',
-    'delicate wildflower arrangement on dark background',
-    'lush monstera and palm fronds',
-    'dried flower still life in muted palette',
-    'intricate fern patterns with dew drops',
+    'oversized tropical leaves in close-up detail with water droplets',
+    'delicate wildflower arrangement on dark moody background',
+    'lush monstera and palm fronds in rich emerald tones',
+    'dried flower still life in muted palette with soft directional light',
+    'intricate fern patterns with dew drops and bokeh background',
   ],
   portraits: [
-    'ethereal figure emerging from abstract color',
-    'silhouette with double exposure landscape',
-    'contemporary portrait with bold color blocking',
-    'dreamlike face composed of natural elements',
-    'fragmented figure in cubist style',
+    'ethereal figure emerging from abstract color and light',
+    'silhouette with double exposure landscape and cosmic elements',
+    'contemporary portrait with bold color blocking and geometric overlay',
+    'dreamlike face composed of natural elements like flowers and water',
+    'fragmented figure in cubist style with rich jewel tones',
   ],
   celestial: [
-    'deep space nebula in vivid ultraviolet',
-    'ringed planet rising over alien terrain',
-    'cosmic dust clouds in gold and teal',
-    'star field with bioluminescent auroras',
-    'eclipse casting light through crystalline structures',
+    'deep space nebula in vivid ultraviolet and magenta',
+    'ringed planet rising over alien terrain with bioluminescent flora',
+    'cosmic dust clouds in gold and teal with stellar nursery',
+    'star field with bioluminescent auroras and reflection',
+    'eclipse casting light through crystalline structures in space',
   ],
   'ocean-water': [
-    'deep underwater bioluminescence',
-    'crashing wave frozen in crystal detail',
-    'abstract ocean currents in blue and silver',
-    'coral reef teeming with color',
-    'calm tide pool reflections at sunset',
+    'deep underwater bioluminescence with ethereal jellyfish',
+    'crashing wave frozen in crystal detail with spray and foam',
+    'abstract ocean currents in blue and silver with depth',
+    'coral reef teeming with color and tropical fish',
+    'calm tide pool reflections at sunset with perfect mirror',
   ],
   minimalist: [
-    'single line drawing on textured paper',
-    'two-tone composition with subtle gradient',
-    'negative space study with one focal point',
-    'simple circle and shadow on warm background',
-    'thin horizontal bands in muted palette',
+    'single continuous line drawing on textured handmade paper',
+    'two-tone composition with subtle gradient and one accent',
+    'negative space study with one powerful focal point',
+    'simple circle and shadow on warm textured background',
+    'thin horizontal bands in muted palette suggesting landscape',
   ],
   texture: [
-    'cracked earth with golden veins',
-    'weathered wood grain in extreme close-up',
-    'marble surface with dramatic veining',
-    'rust and patina on aged metal',
-    'layered paper torn to reveal colors beneath',
+    'cracked earth with golden veins of kintsugi repair',
+    'weathered wood grain in extreme close-up with rich patina',
+    'marble surface with dramatic veining in moody lighting',
+    'rust and patina on aged metal with beautiful decay',
+    'layered paper torn to reveal vivid colors beneath',
   ],
   surreal: [
-    'melting clocks in a desert landscape',
-    'floating islands connected by waterfalls',
-    'rooms defying gravity with impossible stairs',
-    'objects scaled absurdly large in normal settings',
-    'dreamscape merging ocean floor with sky',
+    'melting clocks in a desert landscape with long shadows',
+    'floating islands connected by waterfalls against starry sky',
+    'rooms defying gravity with impossible stairs and doorways',
+    'objects scaled absurdly large in miniature settings',
+    'dreamscape merging ocean floor with sky and clouds',
   ],
 };
 
@@ -241,20 +259,19 @@ function buildGenerationPrompt(req: GenerationRequest): string {
   };
 
   const parts = [
-    'Generate an original fine art image.',
-    req.prompt_prefix,
-    enhancer,
-    req.custom_prompt || '',
-    orientationGuide[req.orientation || 'portrait'],
+    BASE_PROMPT,
+    `\nStyle direction: ${req.prompt_prefix}`,
+    `Visual approach: ${enhancer}`,
+    req.custom_prompt ? `Additional direction: ${req.custom_prompt}` : '',
+    `Composition: ${orientationGuide[req.orientation || 'portrait']}`,
     req.reference_notes || '',
-    'Fine art quality, suitable for large format printing. High resolution, rich detail, museum-worthy. No text, watermarks, signatures, or borders.',
   ];
 
   if (req.reference_images && req.reference_images.length > 0) {
-    parts.push('Use the provided reference images as style and mood inspiration. Create a new original artwork inspired by the aesthetic qualities shown.');
+    parts.push('Use the provided reference images as style and mood inspiration. Create a new original artwork inspired by the aesthetic qualities, color palette, and artistic techniques shown in the references.');
   }
 
-  return parts.filter(Boolean).join('. ');
+  return parts.filter(Boolean).join('\n');
 }
 
 export async function generateArtwork(
@@ -313,9 +330,7 @@ export async function generateArtwork(
 
     const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
@@ -350,7 +365,7 @@ export async function generateArtwork(
     const mediaType = imagePart.inlineData.mimeType || 'image/png';
 
     if (!imageBase64) {
-      return { success: false, error: 'No image data in response' };
+      return { success: false, error: 'No image data in response'};
     }
 
     const timestamp = Date.now();
@@ -404,7 +419,7 @@ export async function generateArtwork(
         width_px: orientation === 'landscape' ? 3840 : orientation === 'square' ? 3840 : 2560,
         height_px: orientation === 'landscape' ? 2560 : orientation === 'square' ? 3840 : 3840,
         generation_prompt: prompt,
-        generation_model: 'gemini-2.5-flash-image',
+        generation_model: GEMINI_MODEL,
         status,
         published_at: status === 'published' ? new Date().toISOString() : null,
       })
