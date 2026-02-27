@@ -4,13 +4,13 @@ import Link from 'next/link';
 
 import { useState } from 'react';
 
-export function Header() {
+export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-blart-white/90 backdrop-blur-md border-b border-blart-stone/50">
-      <nav className="max-w-[1800px] mx-auto px-6 md:px-10 h-16 flex items-center justify-between">
+      <nav className="max-w-[1800px] mx-auto px-6 md:px-10 h-20 flex items-center justify-between">
         <Link href="/" className="flex items-center">
-          <img src="/logo.svg" alt="blart" className="h-7 w-auto" />
+          <img src="/logo.svg" alt="blart" className="h-[84px] w-auto" />
         </Link>
         <div className="hidden md:flex items-center gap-8">
           <Link href="/gallery" className="text-sm tracking-wider uppercase text-blart-dim hover:text-blart-black transition-colors">Gallery</Link>
