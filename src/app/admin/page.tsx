@@ -66,6 +66,22 @@ export default function AdminPage() {
   const styleFileInputRef = useRef<HTMLInputElement>(null);
   const [activeUploadStyleId, setActiveUploadStyleId] = useState<string | null>(null);
 
+  // New style form state
+  const [showNewStyleForm, setShowNewStyleForm] = useState(false);
+  const [newStyleName, setNewStyleName] = useState('');
+  const [newStylePrompt, setNewStylePrompt] = useState('');
+  const [newStyleDesc, setNewStyleDesc] = useState('');
+  const [creatingSyle, setCreatingStyle] = useState(false);
+
+  // Artwork preview modal state
+  const [modalArtwork, setModalArtwork] = useState<Artwork | null>(null);
+
+  // Style editing state
+  const [editingStyleId, setEditingStyleId] = useState<string | null>(null);
+  const [editPrompt, setEditPrompt] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [savingStyle, setSavingStyle] = useState(false);
+
   const headers = useCallback(() => ({
     'Authorization': `Bearer ${adminSecret}`,
     'Content-Type': 'application/json',
@@ -242,6 +258,62 @@ export default function AdminPage() {
     }
   };
 
+  // ── Create new style ──
+  const createStyle = async () => {
+    if (!newStyleName.trim()) { setMessage('Style name is required'); return; }
+    setCreatingStyle(true);
+    try {
+      const res = await fetch('/api/admin/styles', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ action: 'create', name: newStyleName.trim(), prompt_prefix: newStylePrompt.trim() || undefined, description: newStyleDesc.trim() || undefined }),
+      });
+      if (res.ok) {
+        setMessage(`Style "${newStyleName}" created`);
+        setNewStyleName(''); setNewStylePrompt(''); setNewStyleDesc('');
+        setShowNewStyleForm(false);
+        fetchAllStyles();
+      } else {
+        const data = await res.json();
+        setMessage(`Failed: ${data.error}`);
+      }
+    } catch { setMessage('Failed to create style'); }
+    setCreatingStyle(false);
+  };
+
+  // ── Delete style ──
+  const deleteStyle = async (styleId: string, styleName: string) => {
+    if (!confirm(`Delete "${styleName}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/admin/styles?id=${styleId}`, { method: 'DELETE', headers: headers() });
+      if (res.ok) {
+        setMessage(`Style "${styleName}" deleted`);
+        fetchAllStyles();
+      } else {
+        const data = await res.json();
+        setMessage(`Delete failed: ${data.error}`);
+      }
+    } catch { setMessage('Failed to delete style'); }
+  };
+
+  // ── Save style edits (prompt/description) ──
+  const saveStyleEdits = async (styleId: string) => {
+    setSavingStyle(true);
+    try {
+      const res = await fetch('/api/admin/styles', {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({ id: styleId, prompt_prefix: editPrompt, description: editDesc || null }),
+      });
+      if (res.ok) {
+        setMessage('Style updated');
+        setEditingStyleId(null);
+        fetchAllStyles();
+      } else { setMessage('Failed to update style'); }
+    } catch { setMessage('Failed to update style'); }
+    setSavingStyle(false);
+  };
+
   // ── Preview ──
   const handlePreview = async () => {
     if (!genStyleId) { setMessage('Select a style first to preview'); return; }
@@ -348,7 +420,9 @@ export default function AdminPage() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
 
-        {/* SETTINGS TAB — Master Prompt */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SETTINGS TAB — Master Prompt                               */}
+        {/* ═══════════════════════════════════════════════════════════ */}
         {tab === 'settings' && (
           <div className="max-w-3xl">
             <h2 className="font-display text-2xl mb-2">Settings</h2>
@@ -400,14 +474,58 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* STYLES TAB — Per-Style Moodboards */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* STYLES TAB — Per-Style Moodboards                          */}
+        {/* ═══════════════════════════════════════════════════════════ */}
         {tab === 'styles' && (
           <div>
-            <h2 className="font-display text-2xl mb-2">Styles & Moodboards</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-display text-2xl">Styles & Moodboards</h2>
+              <button
+                onClick={() => setShowNewStyleForm(!showNewStyleForm)}
+                className={`px-4 py-2 text-xs tracking-wider uppercase transition-colors ${
+                  showNewStyleForm ? 'bg-blart-ash text-white' : 'bg-blart-black text-white hover:bg-blart-dim'
+                }`}
+              >
+                {showNewStyleForm ? 'Cancel' : '+ New Style'}
+              </button>
+            </div>
             <p className="text-sm text-blart-dim mb-8">
-              Manage reference images for each art style. These images are sent to the AI as visual context
-              with every generation in that style — they act as a persistent moodboard.
+              Manage art styles, their prompts, and reference moodboard images.
             </p>
+
+            {/* New Style Form */}
+            {showNewStyleForm && (
+              <div className="bg-white border border-blart-stone/30 p-6 mb-6">
+                <h3 className="text-sm uppercase tracking-wider font-medium mb-4">Create New Style</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-blart-dim mb-1">Name *</label>
+                    <input type="text" value={newStyleName} onChange={(e) => setNewStyleName(e.target.value)}
+                      placeholder="e.g. Minimalist Watercolor"
+                      className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black" />
+                  </div>
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-blart-dim mb-1">Prompt Prefix</label>
+                    <textarea value={newStylePrompt} onChange={(e) => setNewStylePrompt(e.target.value)} rows={3}
+                      placeholder="Instructions prepended to every generation in this style..."
+                      className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-blart-dim mb-1">Description</label>
+                    <input type="text" value={newStyleDesc} onChange={(e) => setNewStyleDesc(e.target.value)}
+                      placeholder="Short description for admin reference"
+                      className="w-full px-4 py-3 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black" />
+                  </div>
+                  <button onClick={createStyle} disabled={creatingSyle || !newStyleName.trim()}
+                    className={`px-6 py-2.5 text-sm tracking-wider uppercase transition-colors ${
+                      creatingSyle ? 'bg-blart-ash text-white cursor-wait' : 'bg-blart-black text-white hover:bg-blart-dim'
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}>
+                    {creatingSyle ? 'Creating...' : 'Create Style'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {stylesLoading ? (
               <div className="text-center py-20 text-blart-dim">Loading styles...</div>
@@ -416,17 +534,63 @@ export default function AdminPage() {
                 {allStyles.map((style) => (
                   <div key={style.id} className="bg-white border border-blart-stone/30 p-6">
                     <div className="flex items-start justify-between mb-4">
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <h3 className="font-display text-lg">{style.name}</h3>
                         <p className="text-xs text-blart-ash font-mono mt-0.5">{style.slug}</p>
-                        {style.description && (
-                          <p className="text-sm text-blart-dim mt-1">{style.description}</p>
+
+                        {/* Editable prompt/description */}
+                        {editingStyleId === style.id ? (
+                          <div className="mt-3 space-y-3">
+                            <div>
+                              <label className="block text-xs uppercase tracking-wider text-blart-dim mb-1">Prompt Prefix</label>
+                              <textarea value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} rows={3}
+                                className="w-full px-3 py-2 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black resize-none font-mono text-xs" />
+                            </div>
+                            <div>
+                              <label className="block text-xs uppercase tracking-wider text-blart-dim mb-1">Description</label>
+                              <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)}
+                                className="w-full px-3 py-2 border border-blart-stone/50 bg-white text-sm focus:outline-none focus:border-blart-black" />
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => saveStyleEdits(style.id)} disabled={savingStyle}
+                                className={`px-4 py-1.5 text-xs tracking-wider uppercase ${savingStyle ? 'bg-blart-ash text-white cursor-wait' : 'bg-blart-black text-white hover:bg-blart-dim'}`}>
+                                {savingStyle ? 'Saving...' : 'Save'}
+                              </button>
+                              <button onClick={() => setEditingStyleId(null)}
+                                className="px-4 py-1.5 text-xs tracking-wider uppercase border border-blart-stone/50 text-blart-dim hover:border-blart-black">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {style.prompt_prefix && (
+                              <p className="text-xs text-blart-dim mt-2 font-mono bg-blart-cream/50 px-2 py-1 border border-blart-stone/20 line-clamp-2">{style.prompt_prefix}</p>
+                            )}
+                            {style.description && (
+                              <p className="text-sm text-blart-dim mt-1">{style.description}</p>
+                            )}
+                          </>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                         <span className={`text-xs px-2 py-1 ${style.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                           {style.is_active ? 'Active' : 'Inactive'}
                         </span>
+                        {editingStyleId !== style.id && (
+                          <button
+                            onClick={() => { setEditingStyleId(style.id); setEditPrompt(style.prompt_prefix || ''); setEditDesc(style.description || ''); }}
+                            className="text-xs px-2 py-1 border border-blart-stone/50 text-blart-dim hover:border-blart-black hover:text-blart-black transition-colors"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        <button
+                          onClick={() => deleteStyle(style.id, style.name)}
+                          className="text-xs px-2 py-1 border border-red-200 text-red-400 hover:border-red-500 hover:text-red-600 transition-colors"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
 
@@ -476,7 +640,9 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ═══════════════════════════════════════════════════════════ */}
         {/* GENERATE TAB — Simplified (no base prompt, no inspiration) */}
+        {/* ═══════════════════════════════════════════════════════════ */}
         {tab === 'generate' && (
           <div className="max-w-2xl">
             <h2 className="font-display text-2xl mb-2">Generate Artwork</h2>
@@ -616,7 +782,9 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ARTWORK TABS — Review, Published, Archived */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* ARTWORK TABS — Review, Published, Archived                 */}
+        {/* ═══════════════════════════════════════════════════════════ */}
         {(tab === 'review' || tab === 'published' || tab === 'archived') && (
           <>
             <div className="flex items-center justify-between mb-8">
@@ -638,11 +806,11 @@ export default function AdminPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {artworks.map((artwork) => (
                   <div key={artwork.id} className="bg-white border border-blart-stone/30 group">
-                    <div className="aspect-square overflow-hidden bg-blart-cream">
-                      <img src={artwork.image_url} alt={artwork.title} className="w-full h-full object-cover" />
+                    <div className="aspect-square overflow-hidden bg-blart-cream cursor-pointer" onClick={() => setModalArtwork(artwork)}>
+                      <img src={artwork.image_url} alt={artwork.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
                     </div>
                     <div className="p-3">
-                      <p className="text-sm font-display truncate">{artwork.title}</p>
+                      <p className="text-sm font-display truncate cursor-pointer hover:underline" onClick={() => setModalArtwork(artwork)}>{artwork.title}</p>
                       <p className="text-xs text-blart-dim mt-0.5">{artwork.art_styles?.name || 'Unknown'} · {artwork.orientation}</p>
                       <div className="flex flex-wrap gap-1.5 mt-3">
                         {tab === 'review' && (
@@ -680,6 +848,72 @@ export default function AdminPage() {
           </>
         )}
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* ARTWORK PREVIEW MODAL                                      */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {modalArtwork && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={() => setModalArtwork(null)}>
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div className="relative max-w-5xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Close button */}
+            <button onClick={() => setModalArtwork(null)}
+              className="absolute -top-10 right-0 text-white/80 hover:text-white text-sm tracking-wider uppercase z-10">
+              Close ×
+            </button>
+
+            {/* Image */}
+            <div className="flex-1 min-h-0 flex items-center justify-center">
+              <img
+                src={modalArtwork.image_url}
+                alt={modalArtwork.title}
+                className="max-w-full max-h-[75vh] object-contain border border-white/10"
+              />
+            </div>
+
+            {/* Info bar */}
+            <div className="bg-white mt-3 p-4 flex items-center justify-between">
+              <div>
+                <p className="font-display text-lg">{modalArtwork.title}</p>
+                <p className="text-xs text-blart-dim mt-0.5">
+                  {modalArtwork.art_styles?.name || 'Unknown'} · {modalArtwork.orientation} · {modalArtwork.status}
+                </p>
+                {modalArtwork.description && (
+                  <p className="text-sm text-blart-ash mt-2">{modalArtwork.description}</p>
+                )}
+              </div>
+              <div className="flex gap-2 flex-shrink-0 ml-4">
+                {modalArtwork.status === 'review' && (
+                  <>
+                    <button onClick={() => { updateArtwork(modalArtwork.id, { status: 'published' }); setModalArtwork(null); }}
+                      className="px-4 py-2 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors uppercase tracking-wider">Publish</button>
+                    <button onClick={() => { updateArtwork(modalArtwork.id, { status: 'archived' }); setModalArtwork(null); }}
+                      className="px-4 py-2 text-xs bg-blart-ash text-white hover:bg-blart-dim transition-colors uppercase tracking-wider">Archive</button>
+                  </>
+                )}
+                {modalArtwork.status === 'published' && (
+                  <>
+                    <button onClick={() => { updateArtwork(modalArtwork.id, { is_featured: !modalArtwork.is_featured }); setModalArtwork(null); }}
+                      className={`px-4 py-2 text-xs border transition-colors uppercase tracking-wider ${modalArtwork.is_featured ? 'bg-amber-600 text-white border-amber-600' : 'border-blart-stone/50 text-blart-dim hover:border-blart-black'}`}>
+                      {modalArtwork.is_featured ? 'Unfeature' : 'Feature'}
+                    </button>
+                    <button onClick={() => { updateArtwork(modalArtwork.id, { status: 'archived' }); setModalArtwork(null); }}
+                      className="px-4 py-2 text-xs border border-blart-stone/50 text-blart-dim hover:border-blart-black transition-colors uppercase tracking-wider">Archive</button>
+                  </>
+                )}
+                {modalArtwork.status === 'archived' && (
+                  <>
+                    <button onClick={() => { updateArtwork(modalArtwork.id, { status: 'published' }); setModalArtwork(null); }}
+                      className="px-4 py-2 text-xs bg-green-700 text-white hover:bg-green-800 transition-colors uppercase tracking-wider">Publish</button>
+                    <button onClick={() => { updateArtwork(modalArtwork.id, { status: 'review' }); setModalArtwork(null); }}
+                      className="px-4 py-2 text-xs border border-blart-stone/50 text-blart-dim hover:border-blart-black transition-colors uppercase tracking-wider">Review</button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
